@@ -5,9 +5,9 @@
 -export([stop/0]).
 -export([display_trace/1]).
 
-%% @todo {app, atom()}
 %% @todo {profile, M::atom(), F::atom()}
--type input() :: module() | [module()].
+-type pattern() :: module() | {app, atom()}.
+-type input() :: pattern() | [pattern()].
 %% @todo {lg_file, file:file_name()} for an optimized file format.
 %% @todo {ip, IP, Port} for client/server.
 -type output() :: console | raw_console | {dbg_file, file:file_name()}.
@@ -33,7 +33,7 @@ do_trace(Input, Output) ->
     %% @todo Remove eventually?
     _ = application:start(looking_glass),
     {ok, _} = start_tracer(Output),
-    _ = [dbg:tpl(Mod, []) || Mod <- Input],
+    trace_patterns(Input),
     %% We currently enable the following trace flags:
     %% - call: function calls
     %% - procs: process exit events; plus others we ignore
@@ -78,6 +78,15 @@ dbg_file_tracer(Msg, IoDevice) ->
     BinSize = byte_size(Bin),
     ok = file:write(IoDevice, [<<0, BinSize:32>>, Bin]),
     IoDevice.
+
+trace_patterns(Input) ->
+    lists:foreach(fun trace_pattern/1, Input).
+
+trace_pattern({app, App}) when is_atom(App) ->
+    {ok, Mods} = application:get_key(App, modules),
+    trace_patterns(Mods);
+trace_pattern(Mod) when is_atom(Mod) ->
+    dbg:tpl(Mod, []).
 
 %% @todo Move this to a separate module, or remove entirely.
 -spec display_trace(file:file_name()) -> ok.

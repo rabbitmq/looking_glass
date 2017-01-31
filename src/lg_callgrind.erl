@@ -16,7 +16,7 @@
     %% The timestamp for the call.
     ts :: pos_integer(),
     %% Execution time including subcalls.
-    incl :: non_neg_integer(),
+    incl :: undefined | non_neg_integer(),
     %% Execution time excluding subcalls.
     self = 0 :: integer(),
     %% Number of times the function was called.
@@ -55,8 +55,9 @@ profile(Input, Output, Opts) ->
     write_header(OutDevice),
     {ok, _State} = fold_file_head(InDevice, #state{
         input=Input, output=Output, output_device=OutDevice, opts=Opts}),
-    file:close(OutDevice),
-    file:close(InDevice).
+    _ = file:close(OutDevice),
+    _ = file:close(InDevice),
+    ok.
 
 fold_file_head(IoDevice, State) ->
     case file:read(IoDevice, 5) of
@@ -238,7 +239,7 @@ update_mfas([Call=#call{mfa=MFA, incl=Incl, self=Self, count=Count, calls=SubCal
 %% The option 'scope' can be used to enable per process tracking.
 
 write_header(OutDevice) ->
-    file:write(OutDevice, "events: Microseconds\n\n").
+    ok = file:write(OutDevice, "events: Microseconds\n\n").
 
 write_mfas(Pid, MFAs, State) ->
     _ = [write_call(Pid, Call, State) || Call <- maps:values(MFAs)],

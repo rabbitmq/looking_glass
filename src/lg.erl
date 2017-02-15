@@ -63,22 +63,22 @@ start_tracer(console) ->
     dbg:tracer();
 start_tracer(raw_console) ->
 %    dbg:tracer(process, {fun raw_console_tracer/2, undefined});
-    {ok, Pid1} = lg_raw_console_tracer:start_link(1, undefined),
-    {ok, Pid2} = lg_raw_console_tracer:start_link(2, undefined),
+    {ok, PoolPid} = lg_tracer_pool:start_link(10, lg_raw_console_tracer, undefined),
+    Tracers = lg_tracer_pool:tracers(PoolPid),
     N = erlang:trace(processes, true, [
         call, procs, timestamp, arity, return_to,
-        {tracer, lg_tracer, #{tracers => [Pid1, Pid2]}}
+        {tracer, lg_tracer, #{tracers => Tracers}}
     ]),
-    io:format("trace ~p with pids ~p ~p~n", [N, Pid1, Pid2]),
+    io:format("trace ~p with pids ~p~n", [N, Tracers]),
     {ok, undefined};
 start_tracer({trace_file, Filename}) ->
-    {ok, Pid1} = lg_file_tracer:start_link(1, Filename),
-    {ok, Pid2} = lg_file_tracer:start_link(2, Filename),
+    {ok, PoolPid} = lg_tracer_pool:start_link(10, lg_file_tracer, Filename),
+    Tracers = lg_tracer_pool:tracers(PoolPid),
     N = erlang:trace(processes, true, [
         call, procs, timestamp, arity, return_to,
-        {tracer, lg_tracer, #{tracers => [Pid1, Pid2]}}
+        {tracer, lg_tracer, #{tracers => Tracers}}
     ]),
-    io:format("trace ~p with pids ~p ~p~n", [N, Pid1, Pid2]),
+    io:format("trace ~p with pids ~p~n", [N, Tracers]),
     {ok, undefined}.
 
     %% The dbg binary format compresses remarkably well.

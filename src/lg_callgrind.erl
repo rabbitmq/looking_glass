@@ -34,9 +34,9 @@
 
 -record(state, {
     %% Input file name.
-    input :: file:file_name(),
+    input :: file:filename_all(),
     %% Output file name.
-    output :: file:file_name(),
+    output :: file:filename_all(),
     %% Output fd.
     output_device :: file:io_device(),
     %% Options.
@@ -45,7 +45,7 @@
     processes = #{} :: #{pid() => #proc{}}
 }).
 
--spec profile(file:file_name(), file:file_name()) -> ok.
+-spec profile(file:filename_all(), file:filename_all()) -> ok.
 profile(Input, Output) ->
     profile(Input, Output, #{}).
 

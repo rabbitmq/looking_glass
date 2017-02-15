@@ -1,9 +1,12 @@
 -module(lg).
 
+%% @todo Check https://github.com/erlang/otp/pull/1328
+%% which has a tip for making processes with big mailboxes
+%% more efficient by avoiding copies on GC.
+
 -export([trace/1]).
 -export([trace/2]).
 -export([stop/0]).
--export([display_trace/1]).
 
 %% @todo {profile, M::atom(), F::atom()}
 -type pattern() :: module() | {app, atom()}.
@@ -53,31 +56,43 @@ do_trace(Input, Output) ->
     %%
     %% @todo It might be useful to count the number of sends
     %% or receives a function does.
-    {ok, _} = dbg:p(all, [call, procs, timestamp, arity, return_to]),
+%    {ok, _} = dbg:p(all, [call, procs, timestamp, arity, return_to]),
     ok.
 
 start_tracer(console) ->
     dbg:tracer();
 start_tracer(raw_console) ->
-    dbg:tracer(process, {fun raw_console_tracer/2, undefined});
-start_tracer({dbg_file, Filename}) ->
+%    dbg:tracer(process, {fun raw_console_tracer/2, undefined});
+    {ok, Pid1} = lg_raw_console_tracer:start_link(1, undefined),
+    {ok, Pid2} = lg_raw_console_tracer:start_link(2, undefined),
+    N = erlang:trace(processes, true, [
+        call, procs, timestamp, arity, return_to,
+        {tracer, lg_tracer, #{tracers => [Pid1, Pid2]}}
+    ]),
+    io:format("trace ~p with pids ~p ~p~n", [N, Pid1, Pid2]),
+    {ok, undefined};
+start_tracer({trace_file, Filename}) ->
+    {ok, Pid1} = lg_file_tracer:start_link(1, Filename),
+    {ok, Pid2} = lg_file_tracer:start_link(2, Filename),
+    N = erlang:trace(processes, true, [
+        call, procs, timestamp, arity, return_to,
+        {tracer, lg_tracer, #{tracers => [Pid1, Pid2]}}
+    ]),
+    io:format("trace ~p with pids ~p ~p~n", [N, Pid1, Pid2]),
+    {ok, undefined}.
+
     %% The dbg binary format compresses remarkably well.
     %% We therefore unconditionally enable compression.
-    {ok, IoDevice} = file:open(Filename, [write, delayed_write, compressed]),
-    _ = ets:insert(looking_glass, {io_device, IoDevice}),
-    dbg:tracer(process, {fun dbg_file_tracer/2, IoDevice}).
-
-%% Print messages unformatted. Useful for debugging purposes.
-raw_console_tracer(Msg, State) ->
-    erlang:display(Msg),
-    State.
+%    {ok, IoDevice} = file:open(Filename, [write, delayed_write, compressed]),
+%    _ = ets:insert(looking_glass, {io_device, IoDevice}),
+%    dbg:tracer(process, {fun dbg_file_tracer/2, IoDevice}).
 
 %% Save to file following the Erlang/OTP dbg binary trace format.
-dbg_file_tracer(Msg, IoDevice) ->
-    Bin = term_to_binary(Msg),
-    BinSize = byte_size(Bin),
-    ok = file:write(IoDevice, [<<0, BinSize:32>>, Bin]),
-    IoDevice.
+%dbg_file_tracer(Msg, IoDevice) ->
+%    Bin = term_to_binary(Msg),
+%    BinSize = byte_size(Bin),
+%    ok = file:write(IoDevice, [<<0, BinSize:32>>, Bin]),
+%    IoDevice.
 
 trace_patterns(Input) ->
     lists:foreach(fun trace_pattern/1, Input).
@@ -86,27 +101,6 @@ trace_pattern({app, App}) when is_atom(App) ->
     {ok, Mods} = application:get_key(App, modules),
     trace_patterns(Mods);
 trace_pattern(Mod) when is_atom(Mod) ->
-    dbg:tpl(Mod, []).
-
-%% @todo Move this to a separate module, or remove entirely.
--spec display_trace(file:file_name()) -> ok.
-display_trace(Filename) ->
-    {ok, IoDevice} = file:open(Filename, [read, binary, compressed]),
-    ok = read_trace(IoDevice, fun erlang:display/1),
-    ok = file:close(IoDevice).
-
-read_trace(IoDevice, Fun) ->
-    case file:read(IoDevice, 5) of
-        {ok, <<0, BinSize:32>>} ->
-            case file:read(IoDevice, BinSize) of
-                {ok, Bin} ->
-                    Fun(binary_to_term(Bin)),
-                    read_trace(IoDevice, Fun);
-                What ->
-                    What
-            end;
-        eof ->
-            ok;
-        Nope ->
-            Nope
-    end.
+%    dbg:tpl(Mod, []).
+    N = erlang:trace_pattern({Mod, '_', '_'}, true, [local]),
+    io:format("n ~p~n", [N]).

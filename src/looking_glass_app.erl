@@ -5,7 +5,7 @@
 -export([stop/1]).
 
 start(_Type, _Args) ->
-	looking_glass_sup:start_link().
+    looking_glass_sup:start_link().
 
 stop(_State) ->
-	ok.
+    ok.

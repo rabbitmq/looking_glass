@@ -50,69 +50,42 @@ profile(Input, Output) ->
     profile(Input, Output, #{}).
 
 profile(Input, Output, Opts) ->
-    {ok, InDevice} = file:open(Input, [read, binary, compressed]),
     {ok, OutDevice} = file:open(Output, [write]),
     write_header(OutDevice),
-    {ok, _State} = fold_file_head(InDevice, #state{
-        input=Input, output=Output, output_device=OutDevice, opts=Opts}),
+    State = #state{input=Input, output=Output, output_device=OutDevice, opts=Opts},
+    {ok, _} = lg_file_reader:fold(fun handle_event/2, State, Input),
     _ = file:close(OutDevice),
-    _ = file:close(InDevice),
     ok.
-
-fold_file_head(IoDevice, State) ->
-    case file:read(IoDevice, 5) of
-        {ok, <<_, Size:32>>} ->
-            fold_file_body(IoDevice, State, Size);
-        eof ->
-            %% @todo We need to write the MFAs we got pending before returning.
-            {ok, State};
-        {error, Reason} ->
-            {error, Reason,
-                'An error occurred while trying to read the size of an event in the file.'}
-    end.
-
-fold_file_body(IoDevice, State0, Size) ->
-    case file:read(IoDevice, Size) of
-        {ok, Bin} ->
-            case process_body(Bin, State0) of
-                {ok, State} ->
-                    fold_file_head(IoDevice, State);
-                Error ->
-                    Error
-            end;
-        {error, Reason} ->
-            {error, Reason,
-                'An error occured while trying to read an event from the file.'}
-    end.
-
-process_body(Bin, State) ->
-    try binary_to_term(Bin) of
-        Term ->
-            handle_event(Term, State)
-    catch Class:Reason ->
-        {error, {crash, Class, Reason},
-            'The binary form of an event could not be decoded to an Erlang term.'}
-    end.
 
 %% We handle trace events one by one, keeping track of the
 %% execution stack for each process.
 
-handle_event({trace_ts, Pid, call, MFA, Ts}, State) ->
-    handle_call(Pid, convert_mfa(MFA), find_source(MFA), convert_ts(Ts), State);
-handle_event({trace_ts, Pid, return_to, MFA, Ts}, State) ->
-    handle_return_to(Pid, convert_mfa(MFA), convert_ts(Ts), State);
+handle_event({call, Pid, Ts, MFA}, State) ->
+    handle_call(Pid, convert_mfa(MFA), find_source(MFA), Ts, State);
+handle_event({return_to, Pid, Ts, MFA}, State) ->
+    handle_return_to(Pid, convert_mfa(MFA), Ts, State);
 %% Process exited. Unfold the stacktrace entirely.
 %%
 %% We use the atom exit because we know it will not match
 %% a function call and will therefore unfold everything.
-handle_event({trace_ts, Pid, exit, _Reason, Ts}, State0) ->
-    {ok, State=#state{processes=Procs}}
-        = handle_return_to(Pid, exit, convert_ts(Ts), State0),
-    %% Remove the pid from the state to save memory.
-    {ok, State#state{processes=maps:remove(Pid, Procs)}};
+handle_event({exit, Pid, Ts, _Reason}, State0=#state{processes=Procs0}) ->
+    case maps:get(Pid, Procs0, undefined) of
+        %% We never received events for this process. Ignore.
+        undefined ->
+            State0;
+        %% We received events but are not in a known function currently. Ignore.
+        #proc{stack=[]} ->
+            State0;
+        %% All good!
+        _ ->
+            State=#state{processes=Procs}
+                = handle_return_to(Pid, exit, Ts, State0),
+            %% Remove the pid from the state to save memory.
+            State#state{processes=maps:remove(Pid, Procs)}
+    end;
 %% Ignore all other events. We do not need them for building the callgrind file.
 handle_event(_, State) ->
-    {ok, State}.
+    State.
 
 %% We track a number of different things:
 %% - how much time was spent in the different function calls
@@ -143,7 +116,7 @@ handle_call(Pid, MFA, Source, Ts, State=#state{processes=Procs}) ->
     %% us to track the number of returns from the function.
     Stack = [#call{mfa=MFA, source=Source, ts=Ts}|Stack0],
     Proc = Proc1#proc{stack=Stack},
-    {ok, State#state{processes=Procs#{Pid => Proc}}}.
+    State#state{processes=Procs#{Pid => Proc}}.
 
 %% We return from the current call, so the current call
 %% ends regardless of what it was doing. We stop as soon
@@ -158,7 +131,7 @@ handle_return_to(Pid, MFA, Ts, State=#state{processes=Procs}) ->
         %% at the very beginning. We basically ignore the return_to in
         %% this case.
         #proc{stack=[]} ->
-            {ok, State};
+            State;
         %% Otherwise we process it.
         Proc1=#proc{stack=[Current|Stack0], mfas=MFAs0} ->
             {Returned0, Stack1} = lists:splitwith(
@@ -187,7 +160,7 @@ handle_return_to(Pid, MFA, Ts, State=#state{processes=Procs}) ->
                     MFAs1
             end,
             Proc = Proc1#proc{stack=Stack, mfas=MFAs},
-            {ok, State#state{processes=Procs#{Pid => Proc}}}
+            State#state{processes=Procs#{Pid => Proc}}
     end.
 
 %% Update the call we return to in the stack.
@@ -285,9 +258,6 @@ convert_mfa({M0, F0, A0}) ->
     F = atom_to_binary(F0, latin1),
     A = integer_to_binary(A0),
     binary_to_atom(<<M/binary, $:, F/binary, $/, A/binary>>, latin1).
-
-convert_ts({MegaSecs, Secs, MicroSecs}) ->
-    MegaSecs * 1000000000000 + Secs * 1000000 + MicroSecs.
 
 %% @todo What about the line number of the function being called?
 find_source({Module, _, _}) ->

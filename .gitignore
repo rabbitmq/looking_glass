@@ -1,0 +1,7 @@
+.erlang.mk/
+.looking_glass.plt
+c_src/env.mk
+c_src/*.o
+ebin/
+looking_glass.d
+priv/lg_tracer.so

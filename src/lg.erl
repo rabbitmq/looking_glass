@@ -4,38 +4,54 @@
 %% which has a tip for making processes with big mailboxes
 %% more efficient by avoiding copies on GC.
 
+%% @todo Tracer that listens for one incoming connection and pushes everything through.
+
 -export([trace/1]).
 -export([trace/2]).
+-export([trace/3]).
+-export([trace/4]).
+-export([stop/0]).
 -export([stop/1]).
 
 %% @todo {profile, M::atom(), F::atom()}
 -type pattern() :: module() | {app, atom()}.
 -type input() :: pattern() | [pattern()].
 
-%% @todo Tracer that listens for one incoming connection and pushes everything through.
+-type opts() :: #{
+    pool_id => any(),
+    pool_size => pos_integer()
+}.
 
-%% Options differ depending on the tracer module.
--type opts() :: any().
-
--spec trace(input()) -> {ok, pid()}.
+-spec trace(input()) -> ok.
 trace(Input) ->
     trace(Input, lg_raw_console_tracer).
 
--spec trace(input(), module()) -> {ok, pid()}.
+-spec trace(input(), module()) -> ok.
 trace(Input, TracerMod) ->
-    trace(Input, TracerMod, #{}).
+    trace(Input, TracerMod, undefined, #{}).
 
--spec trace(input(), module(), opts()) -> {ok, pid()}.
-trace(Input, TracerMod, Opts) when is_list(Input) ->
-    do_trace(Input, TracerMod, Opts);
-trace(Input, TracerMod, Opts) ->
-    trace([Input], TracerMod, Opts).
+-spec trace(input(), module(), any()) -> ok.
+trace(Input, TracerMod, TracerOpts) ->
+    trace(Input, TracerMod, TracerOpts, #{}).
 
-do_trace(Input, TracerMod, Opts) ->
+-spec trace(input(), module(), any(), opts()) -> ok.
+trace(Input, TracerMod, TracerOpts, Opts) when is_list(Input) ->
+    do_trace(Input, TracerMod, TracerOpts, Opts);
+trace(Input, TracerMod, TracerOpts, Opts) ->
+    trace([Input], TracerMod, TracerOpts, Opts).
+
+do_trace(Input, TracerMod, TracerOpts, Opts) ->
     %% @todo Remove eventually?
-    _ = application:start(looking_glass),
+    _ = application:ensure_all_started(looking_glass),
     %% Start the pool of tracer processes.
-    {ok, PoolPid} = lg_tracer_pool:start_link(10, TracerMod, Opts),
+    PoolID = maps:get(pool_id, Opts, default),
+    PoolSize = maps:get(pool_size, Opts, erlang:system_info(schedulers)),
+    {ok, PoolPid} = supervisor:start_child(looking_glass_sup, #{
+        id => PoolID,
+        start => {lg_tracer_pool, start_link, [PoolSize, TracerMod, TracerOpts]},
+        restart => temporary,
+        type => supervisor
+    }),
     Tracers = lg_tracer_pool:tracers(PoolPid),
     %% We currently enable the following trace flags:
     %% - call: function calls
@@ -61,7 +77,7 @@ do_trace(Input, TracerMod, Opts) ->
         {tracer, lg_tracer, #{tracers => Tracers}}
     ]),
     trace_patterns(Input),
-    {ok, PoolPid}.
+    ok.
 
 trace_patterns(Input) ->
     lists:foreach(fun trace_pattern/1, Input).
@@ -72,5 +88,12 @@ trace_pattern({app, App}) when is_atom(App) ->
 trace_pattern(Mod) when is_atom(Mod) ->
     _ = erlang:trace_pattern({Mod, '_', '_'}, true, [local]).
 
-stop(_PoolPid) ->
-    todo.
+stop() ->
+    stop(default).
+
+%% @todo Confirm that we don't need to stop tracing,
+%% that just terminating the tracers is enough. The
+%% NIF does cancel traces when tracers go away, but
+%% better make sure.
+stop(PoolID) ->
+    supervisor:terminate_child(looking_glass_sup, PoolID).

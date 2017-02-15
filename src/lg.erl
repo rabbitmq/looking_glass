@@ -6,37 +6,37 @@
 
 -export([trace/1]).
 -export([trace/2]).
--export([stop/0]).
+-export([stop/1]).
 
 %% @todo {profile, M::atom(), F::atom()}
 -type pattern() :: module() | {app, atom()}.
 -type input() :: pattern() | [pattern()].
-%% @todo {lg_file, file:file_name()} for an optimized file format.
-%% @todo {ip, IP, Port} for client/server.
--type output() :: console | raw_console | {dbg_file, file:file_name()}.
 
--spec trace(input()) -> ok.
+%% @todo Tracer that listens for one incoming connection and pushes everything through.
+
+%% Options differ depending on the tracer module.
+-type opts() :: any().
+
+-spec trace(input()) -> {ok, pid()}.
 trace(Input) ->
-    trace(Input, console).
+    trace(Input, lg_raw_console_tracer).
 
--spec trace(input(), output()) -> ok.
-trace(Input, Output) when is_list(Input) ->
-    do_trace(Input, Output);
-trace(Input, Output) ->
-    trace([Input], Output).
+-spec trace(input(), module()) -> {ok, pid()}.
+trace(Input, TracerMod) ->
+    trace(Input, TracerMod, #{}).
 
-stop() ->
-    _ = case ets:lookup(looking_glass, io_device) of
-        [] -> ok;
-        [{_, IoDevice}] -> file:close(IoDevice)
-    end,
-    dbg:stop_clear().
+-spec trace(input(), module(), opts()) -> {ok, pid()}.
+trace(Input, TracerMod, Opts) when is_list(Input) ->
+    do_trace(Input, TracerMod, Opts);
+trace(Input, TracerMod, Opts) ->
+    trace([Input], TracerMod, Opts).
 
-do_trace(Input, Output) ->
+do_trace(Input, TracerMod, Opts) ->
     %% @todo Remove eventually?
     _ = application:start(looking_glass),
-    {ok, _} = start_tracer(Output),
-    trace_patterns(Input),
+    %% Start the pool of tracer processes.
+    {ok, PoolPid} = lg_tracer_pool:start_link(10, TracerMod, Opts),
+    Tracers = lg_tracer_pool:tracers(PoolPid),
     %% We currently enable the following trace flags:
     %% - call: function calls
     %% - procs: process exit events; plus others we ignore
@@ -56,43 +56,12 @@ do_trace(Input, Output) ->
     %%
     %% @todo It might be useful to count the number of sends
     %% or receives a function does.
-%    {ok, _} = dbg:p(all, [call, procs, timestamp, arity, return_to]),
-    ok.
-
-start_tracer(console) ->
-    dbg:tracer();
-start_tracer(raw_console) ->
-%    dbg:tracer(process, {fun raw_console_tracer/2, undefined});
-    {ok, PoolPid} = lg_tracer_pool:start_link(10, lg_raw_console_tracer, undefined),
-    Tracers = lg_tracer_pool:tracers(PoolPid),
-    N = erlang:trace(processes, true, [
+    _ = erlang:trace(processes, true, [
         call, procs, timestamp, arity, return_to,
         {tracer, lg_tracer, #{tracers => Tracers}}
     ]),
-    io:format("trace ~p with pids ~p~n", [N, Tracers]),
-    {ok, undefined};
-start_tracer({trace_file, Filename}) ->
-    {ok, PoolPid} = lg_tracer_pool:start_link(10, lg_file_tracer, Filename),
-    Tracers = lg_tracer_pool:tracers(PoolPid),
-    N = erlang:trace(processes, true, [
-        call, procs, timestamp, arity, return_to,
-        {tracer, lg_tracer, #{tracers => Tracers}}
-    ]),
-    io:format("trace ~p with pids ~p~n", [N, Tracers]),
-    {ok, undefined}.
-
-    %% The dbg binary format compresses remarkably well.
-    %% We therefore unconditionally enable compression.
-%    {ok, IoDevice} = file:open(Filename, [write, delayed_write, compressed]),
-%    _ = ets:insert(looking_glass, {io_device, IoDevice}),
-%    dbg:tracer(process, {fun dbg_file_tracer/2, IoDevice}).
-
-%% Save to file following the Erlang/OTP dbg binary trace format.
-%dbg_file_tracer(Msg, IoDevice) ->
-%    Bin = term_to_binary(Msg),
-%    BinSize = byte_size(Bin),
-%    ok = file:write(IoDevice, [<<0, BinSize:32>>, Bin]),
-%    IoDevice.
+    trace_patterns(Input),
+    {ok, PoolPid}.
 
 trace_patterns(Input) ->
     lists:foreach(fun trace_pattern/1, Input).
@@ -101,6 +70,7 @@ trace_pattern({app, App}) when is_atom(App) ->
     {ok, Mods} = application:get_key(App, modules),
     trace_patterns(Mods);
 trace_pattern(Mod) when is_atom(Mod) ->
-%    dbg:tpl(Mod, []).
-    N = erlang:trace_pattern({Mod, '_', '_'}, true, [local]),
-    io:format("n ~p~n", [N]).
+    _ = erlang:trace_pattern({Mod, '_', '_'}, true, [local]).
+
+stop(_PoolPid) ->
+    todo.

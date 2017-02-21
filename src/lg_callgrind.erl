@@ -42,7 +42,9 @@
     %% Options.
     opts :: opts(),
     %% List of processes.
-    processes = #{} :: #{pid() => #proc{}}
+    processes = #{} :: #{pid() => #proc{}},
+    %% Cache of source file information.
+    sources = #{} :: #{module() => string()}
 }).
 
 -spec profile(file:filename_all(), file:filename_all()) -> ok.
@@ -60,8 +62,9 @@ profile(Input, Output, Opts) ->
 %% We handle trace events one by one, keeping track of the
 %% execution stack for each process.
 
-handle_event({call, Pid, Ts, MFA}, State) ->
-    handle_call(Pid, convert_mfa(MFA), find_source(MFA), Ts, State);
+handle_event({call, Pid, Ts, MFA}, State0) ->
+    {Source, State} = find_source(MFA, State0),
+    handle_call(Pid, convert_mfa(MFA), Source, Ts, State);
 handle_event({return_to, Pid, Ts, MFA}, State) ->
     handle_return_to(Pid, convert_mfa(MFA), Ts, State);
 %% Process exited. Unfold the stacktrace entirely.
@@ -226,17 +229,16 @@ write_call(Pid, #call{mfa=MFA, source=Source, self=Self, calls=Calls0},
     LN = 1,
     Ob = case Opts of
         #{scope := per_process} ->
-            io_lib:format("ob=~p~n", [Pid]);
+            ["ob=", io_lib:write(Pid), "\n"];
         _ ->
             []
     end,
-    file:write(OutDevice, [Ob, io_lib:format(
-        "fl=~s~n"
-        "fn=~s~n"
-        "~p ~p~n"
-        "~s"
-        "~n",
-        [Source, MFA, LN, Self, format_subcalls(Calls)])]).
+    file:write(OutDevice, [Ob,
+        "fl=", Source, "\n"
+        "fn=", atom_to_list(MFA), "\n",
+        integer_to_list(LN), " ", integer_to_list(Self), "\n",
+        format_subcalls(Calls),
+        "\n"]).
 
 format_subcalls([]) ->
     [];
@@ -246,13 +248,12 @@ format_subcalls([]) ->
 format_subcalls([#call{mfa=MFA, source=Source, incl=Incl, count=Count, calls=_Calls}|Tail]) ->
     %% @todo It would be useful to look at the actual line number.
     LN = TargetLN = 1,
-    [io_lib:format(
-        "cfi=~s~n"
-        "cfn=~s~n"
-        "calls=~p ~p~n"
-        "~p ~p~n",
-        [Source, MFA, Count, TargetLN, LN, Incl])
-    |format_subcalls(Tail)].
+    [[
+        "cfi=", Source, "\n"
+        "cfn=", atom_to_list(MFA), "\n"
+        "calls=", integer_to_list(Count), integer_to_list(TargetLN), "\n",
+        integer_to_list(LN), " ", integer_to_list(Incl), "\n"
+    ]|format_subcalls(Tail)].
 
 convert_mfa(undefined) ->
     undefined;
@@ -263,21 +264,28 @@ convert_mfa({M0, F0, A0}) ->
     binary_to_atom(<<M/binary, $:, F/binary, $/, A/binary>>, latin1).
 
 %% @todo What about the line number of the function being called?
-find_source({Module, _, _}) ->
-    try
+find_source(MFA={Module, _, _}, State=#state{sources=Cache}) ->
+    case Cache of
+        #{Module := Source} -> {Source, State};
+        _ -> do_find_source(MFA, State)
+    end.
+
+do_find_source({Module, _, _}, State=#state{sources=Cache}) ->
+    Source = try
         %% If the module is in the path, we can simply query
         %% it for the source file.
         Info = Module:module_info(compile),
-        {_, Source} = lists:keyfind(source, 1, Info),
+        {_, Src} = lists:keyfind(source, 1, Info),
         %% @todo We don't want to return an absolute path,
         %% but rather the app/src/file.erl path if it's in
         %% an application, or just folder/file.erl if not.
         %% This allows different users to point to the
         %% same source at different locations on their machine.
-        Source
+        Src
     catch _:_ ->
         %% If we couldn't use the beam file to retrieve the
         %% source file name, we just append .erl and hope for
         %% the best.
         atom_to_list(Module) ++ ".erl"
-    end.
+    end,
+    {Source, State#state{sources=Cache#{Module => Source}}}.

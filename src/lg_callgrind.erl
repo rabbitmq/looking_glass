@@ -5,7 +5,9 @@
 
 -type opts() :: #{
     %% Whether we filter the output per process.
-    scope => global | per_process
+    scope => global | per_process,
+    %% Whether we compute and save wait times.
+    running => boolean()
 }.
 
 -record(call, {
@@ -21,6 +23,10 @@
     self = 0 :: integer(),
     %% Number of times the function was called.
     count = 1 :: pos_integer(),
+    %% Time when the process was not running.
+    wait = 0 :: non_neg_integer(),
+    %% Number of times the process was scheduled out.
+    wait_count = 0 :: non_neg_integer(),
     %% Calls done by this MFA.
     calls = #{} :: #{atom() => #call{}}
 }).
@@ -29,7 +35,9 @@
     %% Call stack.
     stack = [] :: [#call{}],
     %% Profile information waiting to be written to file.
-    mfas = #{} :: #{atom() => #call{}}
+    mfas = #{} :: #{atom() => #call{}},
+    %% Timestamp the process got scheduled out.
+    out = undefined :: undefined | non_neg_integer()
 }).
 
 -record(state, {
@@ -53,8 +61,8 @@ profile(Input, Output) ->
 
 profile(Input, Output, Opts) ->
     {ok, OutDevice} = file:open(Output, [write]),
-    write_header(OutDevice),
     State = #state{input=Input, output=Output, output_device=OutDevice, opts=Opts},
+    write_header(State),
     {ok, _} = lg_file_reader:fold(fun handle_event/2, State, Input),
     _ = file:close(OutDevice),
     ok.
@@ -63,32 +71,54 @@ profile(Input, Output, Opts) ->
 %% execution stack for each process.
 
 handle_event({call, Pid, Ts, MFA}, State0) ->
+    Proc = case is_process_profiled(Pid, State0) of
+        {true, P} -> P;
+        {empty, P} -> P;
+        false -> #proc{}
+    end,
     {Source, State} = find_source(MFA, State0),
-    handle_call(Pid, convert_mfa(MFA), Source, Ts, State);
+    handle_call(Pid, convert_mfa(MFA), Source, Ts, Proc, State);
 handle_event({return_to, Pid, Ts, MFA}, State) ->
-    handle_return_to(Pid, convert_mfa(MFA), Ts, State);
+    case is_process_profiled(Pid, State) of
+        {true, Proc} -> handle_return_to(Pid, convert_mfa(MFA), Ts, Proc, State);
+        _ -> State
+    end;
 %% Process exited. Unfold the stacktrace entirely.
 %%
 %% We use the atom exit because we know it will not match
 %% a function call and will therefore unfold everything.
-handle_event({exit, Pid, Ts, _Reason}, State0=#state{processes=Procs0}) ->
-    case maps:get(Pid, Procs0, undefined) of
-        %% We never received events for this process. Ignore.
-        undefined ->
-            State0;
-        %% We received events but are not in a known function currently. Ignore.
-        #proc{stack=[]} ->
-            State0;
-        %% All good!
-        _ ->
-            State=#state{processes=Procs}
-                = handle_return_to(Pid, exit, Ts, State0),
+handle_event({exit, Pid, Ts, _Reason}, State0=#state{processes=Procs}) ->
+    case is_process_profiled(Pid, State0) of
+        {true, Proc} ->
+            State=#state{processes=Procs} = handle_return_to(Pid, exit, Ts, Proc, State0),
             %% Remove the pid from the state to save memory.
-            State#state{processes=maps:remove(Pid, Procs)}
+            State#state{processes=maps:remove(Pid, Procs)};
+        _ ->
+            State0
+    end;
+handle_event({in, Pid, Ts, _MFA}, State=#state{opts=#{running := true}}) ->
+    case is_process_profiled(Pid, State) of
+        {true, Proc} -> handle_in(Pid, Ts, Proc, State);
+        _ -> State
+    end;
+handle_event({out, Pid, Ts, _MFA}, State=#state{opts=#{running := true}}) ->
+    case is_process_profiled(Pid, State) of
+        {true, Proc} -> handle_out(Pid, Ts, Proc, State);
+        _ -> State
     end;
 %% Ignore all other events. We do not need them for building the callgrind file.
 handle_event(_, State) ->
     State.
+
+is_process_profiled(Pid, #state{processes=Procs}) ->
+    case maps:get(Pid, Procs, undefined) of
+        %% We never received events for this process. Ignore.
+        undefined -> false;
+        %% We received events but are not in a known function currently. Ignore.
+        Proc=#proc{stack=[]} -> {empty, Proc};
+        %% All good!
+        Proc -> {true, Proc}
+    end.
 
 %% We track a number of different things:
 %% - how much time was spent in the different function calls
@@ -108,17 +138,13 @@ handle_event(_, State) ->
 %% doesn't have loops, it will appear a little weird if
 %% compared to an imperative language.
 
-handle_call(Pid, MFA, Source, Ts, State=#state{processes=Procs}) ->
-    Proc1 = case maps:get(Pid, Procs, undefined) of
-        undefined -> #proc{};
-        Proc0 -> Proc0
-    end,
-    #proc{stack=Stack0} = Proc1,
+handle_call(Pid, MFA, Source, Ts, Proc0=#proc{stack=Stack0},
+        State=#state{processes=Procs}) ->
     %% @todo As an optimization, we should probably increase the
     %% call count instead of adding to the stack. This requires
     %% us to track the number of returns from the function.
     Stack = [#call{mfa=MFA, source=Source, ts=Ts}|Stack0],
-    Proc = Proc1#proc{stack=Stack},
+    Proc = Proc0#proc{stack=Stack},
     State#state{processes=Procs#{Pid => Proc}}.
 
 %% We return from the current call, so the current call
@@ -128,43 +154,52 @@ handle_call(Pid, MFA, Source, Ts, State=#state{processes=Procs}) ->
 %% because we were not tracing the function we actually
 %% end up returning to), we get everything.
 
-handle_return_to(Pid, MFA, Ts, State=#state{processes=Procs}) ->
-    case maps:get(Pid, Procs) of
-        %% Depending on when tracing started, we might have an empty stack
-        %% at the very beginning. We basically ignore the return_to in
-        %% this case.
-        #proc{stack=[]} ->
-            State;
-        %% Otherwise we process it.
-        Proc1=#proc{stack=[Current|Stack0], mfas=MFAs0} ->
-            {Returned0, Stack1} = lists:splitwith(
-                fun(#call{mfa=E}) -> E =/= MFA end,
-                Stack0),
-            Returned1 = [Current|Returned0],
-            %% First we calculate the time spent in all the calls that returned.
-            %% This is the time including all sub calls. We also add the time
-            %% difference to self. Self might be negative then if it calls many
-            %% functions, as update_parent_call might substract subcall time
-            %% while the function is in the stack.
-            Returned2 = [Call#call{incl=Ts - CallTs, self=Self + Ts - CallTs}
-                || Call=#call{ts=CallTs, self=Self} <- Returned1],
-            %% Then we update all the sub-calls for all functions returned,
-            %% and the first function in the new stack (the function we
-            %% return to).
-            {Returned, Stack} = update_calls(Returned2, Stack1),
-            %% Last, we save the profile information, potentially flushing it
-            %% to disk if the stack is empty.
-            MFAs1 = update_mfas(Returned, MFAs0),
-            MFAs = case Stack of
-                [] ->
-                    write_mfas(Pid, MFAs1, State),
-                    #{};
-                _ ->
-                    MFAs1
-            end,
-            Proc = Proc1#proc{stack=Stack, mfas=MFAs},
-            State#state{processes=Procs#{Pid => Proc}}
-    end.
+handle_return_to(Pid, MFA, Ts, Proc0=#proc{stack=[Current|Stack0], mfas=MFAs0},
+        State=#state{processes=Procs}) ->
+    {Returned0, Stack1} = lists:splitwith(
+        fun(#call{mfa=E}) -> E =/= MFA end,
+        Stack0),
+    Returned1 = [Current|Returned0],
+    %% First we calculate the time spent in all the calls that returned.
+    %% This is the time including all sub calls. We also add the time
+    %% difference to self. Self might be negative then if it calls many
+    %% functions, as update_parent_call might substract subcall time
+    %% while the function is in the stack.
+    Returned2 = [Call#call{incl=Ts - CallTs, self=Self + Ts - CallTs}
+        || Call=#call{ts=CallTs, self=Self} <- Returned1],
+    %% Then we update all the sub-calls for all functions returned,
+    %% and the first function in the new stack (the function we
+    %% return to).
+    {Returned, Stack} = update_calls(Returned2, Stack1),
+    %% Last, we save the profile information, potentially flushing it
+    %% to disk if the stack is empty.
+    MFAs1 = update_mfas(Returned, MFAs0),
+    MFAs = case Stack of
+        [] ->
+            write_mfas(Pid, MFAs1, State),
+            #{};
+        _ ->
+            MFAs1
+    end,
+    Proc = Proc0#proc{stack=Stack, mfas=MFAs},
+    State#state{processes=Procs#{Pid => Proc}}.
+
+%% Processes get scheduled in and out. We get the corresponding
+%% in and out events when the 'running' option is set to true.
+%% We keep track of how many times the process was scheduled out
+%% per function, and how long.
+
+handle_in(Pid, InTs, Proc0=#proc{stack=[Current0|Stack], out=OutTs},
+        State=#state{processes=Procs}) ->
+    #call{wait=Wait, wait_count=WaitCount} = Current0,
+    Current = Current0#call{wait=Wait + InTs - OutTs, wait_count=WaitCount + 1},
+    Proc = Proc0#proc{stack=[Current|Stack], out=undefined},
+    State#state{processes=Procs#{Pid => Proc}}.
+
+handle_out(Pid, Ts, Proc0=#proc{out=undefined},
+        State=#state{processes=Procs}) ->
+    Proc = Proc0#proc{out=Ts},
+    State#state{processes=Procs#{Pid => Proc}}.
 
 %% Update the call we return to in the stack.
 update_calls(Returned=[Call], [ParentCall0|Stack]) ->
@@ -215,14 +250,26 @@ update_mfas([Call=#call{mfa=MFA, incl=Incl, self=Self, count=Count, calls=SubCal
 %%
 %% The option 'scope' can be used to enable per process tracking.
 
-write_header(OutDevice) ->
-    ok = file:write(OutDevice, "events: Microseconds\n\n").
+write_header(#state{output_device=OutDevice, opts=#{running := true}}) ->
+    ok = file:write(OutDevice,
+        "events: Total Active Wait WaitCount\n"
+        "event: Total : Total time in microseconds\n"
+        "event: Active : Active time in microseconds\n"
+        "event: Wait : Wait time in microseconds (scheduled out)\n"
+        "event: WaitCount : Number of times the process was scheduled out\n"
+        "\n");
+write_header(#state{output_device=OutDevice}) ->
+    ok = file:write(OutDevice,
+        "events: Total\n"
+        "event: Total : Total time in microseconds\n"
+        "\n").
 
 write_mfas(Pid, MFAs, State) ->
     _ = [write_call(Pid, Call, State) || Call <- maps:values(MFAs)],
     ok.
 
-write_call(Pid, #call{mfa=MFA, source=Source, self=Self, calls=Calls0},
+write_call(Pid, #call{mfa=MFA, source=Source, self=Self, wait=Wait,
+        wait_count=WaitCount, calls=Calls0},
         #state{output_device=OutDevice, opts=Opts}) ->
     Calls = maps:values(Calls0),
     %% @todo It would be useful to look at the actual line number.
@@ -233,10 +280,20 @@ write_call(Pid, #call{mfa=MFA, source=Source, self=Self, calls=Calls0},
         _ ->
             []
     end,
+    RunningCosts = case Opts of
+        #{running := true} ->
+            [
+                " ", integer_to_list(Self - Wait),
+                " ", integer_to_list(Wait),
+                " ", integer_to_list(WaitCount)
+            ];
+        _ ->
+            []
+    end,
     file:write(OutDevice, [Ob,
         "fl=", Source, "\n"
         "fn=", atom_to_list(MFA), "\n",
-        integer_to_list(LN), " ", integer_to_list(Self), "\n",
+        integer_to_list(LN), " ", integer_to_list(Self), RunningCosts, "\n",
         format_subcalls(Calls),
         "\n"]).
 

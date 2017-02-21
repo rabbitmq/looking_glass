@@ -140,10 +140,6 @@ NIF_FUNCTION(enabled)
 
     // @todo Discard trace events for a percent of processes.
 
-    // @todo Discard trace events we don't care about depending
-    // on the lg:trace options. Note that we must always allow
-    // trace_status.
-
     // Discard events we don't need when the tracer mode is 'profile'.
     // The default is to leave all events that were enabled by Erlang.
     if (enif_get_map_value(env, argv[1], atom_mode, &mode)) {
@@ -152,6 +148,8 @@ NIF_FUNCTION(enabled)
                 enif_is_identical(atom_call, argv[0]) ||
                 enif_is_identical(atom_return_to, argv[0]) ||
                 enif_is_identical(atom_exit, argv[0]) ||
+                enif_is_identical(atom_in, argv[0]) ||
+                enif_is_identical(atom_out, argv[0]) ||
                 enif_is_identical(atom_trace_status, argv[0])))
                 return on_error;
         }
@@ -198,6 +196,7 @@ NIF_FUNCTION(trace)
     if (!enif_get_local_pid(env, head, &tracer))
         return atom_ok;
 
+    // @todo Do we ever reach this?
     if (!enif_is_process_alive(env, &tracer))
         printf("dead\n");
 

@@ -56,26 +56,19 @@ do_trace(Input, TracerMod, TracerOpts, Opts) ->
     %% We currently enable the following trace flags:
     %% - call: function calls
     %% - procs: process exit events; plus others we ignore
+    %% - running: process being scheduled in/out
     %% - timestamp: events include the current timestamp
     %% - arity: function calls only include the arity, not arguments
     %% - return_to: return from functions
     %%
-    %% @todo We will need to add the 'running' trace flag
-    %% to get events when the process gets scheduled in and out.
-    %% We can then add the following infos to the callgrind file:
-    %% - active execution time (without the wait times)
-    %% - wait time
-    %% - number of times the process got scheduled out
-    %%   (can be useful to detect anomalies, for example
-    %%   a process sending a message to a busy process can
-    %%   get scheduled out)
-    %%
     %% @todo It might be useful to count the number of sends
     %% or receives a function does.
     Mode = maps:get(mode, Opts, trace),
+    Running = maps:get(running, Opts, false),
     _ = erlang:trace(processes, true, [
         call, procs, timestamp, arity, return_to,
         {tracer, lg_tracer, #{mode => Mode, tracers => Tracers}}
+        |[running || Running]
     ]),
     trace_patterns(Input),
     ok.

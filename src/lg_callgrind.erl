@@ -178,16 +178,17 @@ update_calls([Call, ParentCall0|Tail], Stack0) ->
     {[_|Returned], Stack} = update_calls([ParentCall|Tail], Stack0),
     {[Call, ParentCall|Returned], Stack}.
 
-update_parent_call(Call=#call{mfa=MFA, incl=Incl, count=_Count},
-        ParentCall=#call{self=Self, calls=SubCalls}) ->
+update_parent_call(Call=#call{mfa=MFA, incl=Incl},
+        ParentCall=#call{self=ParentSelf, calls=SubCalls}) ->
     case maps:get(MFA, SubCalls, undefined) of
         undefined ->
             %% We substract the time spent in the callee from the caller
             %% and remove any callee subcalls as we don't need those.
-            ParentCall#call{self=Self - Incl, calls=SubCalls#{MFA => Call#call{calls=#{}}}}
-         %% @todo Need an example where MFA is defined. This is the
-         %% case if for example we call the same function twice in
-         %% a row.
+            ParentCall#call{self=ParentSelf - Incl, calls=SubCalls#{MFA => Call#call{calls=#{}}}};
+        _ ->
+            %% Same as above, except we don't touch the sub calls.
+            %% Values get updated in update_mfas/2.
+            ParentCall#call{self=ParentSelf - Incl}
     end.
 
 %% Update the profiling information we currently hold.
@@ -253,6 +254,8 @@ format_subcalls([#call{mfa=MFA, source=Source, incl=Incl, count=Count, calls=_Ca
         [Source, MFA, Count, TargetLN, LN, Incl])
     |format_subcalls(Tail)].
 
+convert_mfa(undefined) ->
+    undefined;
 convert_mfa({M0, F0, A0}) ->
     M = atom_to_binary(M0, latin1),
     F = atom_to_binary(F0, latin1),

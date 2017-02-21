@@ -167,12 +167,13 @@ NIF_FUNCTION(trace)
 
     // Select the correct tracer for this process.
     //
-    // It seems that currently the pid numbers are
-    // always odd. Dividing by 10 "fixes" that.
+    // The pid value is detailed in:
+    //     5b6dd0e84cf0f1dc19ddd05f86cf04b2695d8a9e/erts/emulator/beam/erl_term.h#L498
     //
-    // @todo Figure out a better way to do this.
+    // As can be seen there, the first four bits of the pid value
+    // are always the same. We therefore shift them out.
 
-    nth = (tracee.pid / 10) % len;
+    nth = (tracee.pid >> 4) % len;
 
     for (i = 0; i <= nth; i++) {
         if (!enif_get_list_cell(env, tracers, &head, &tracers))

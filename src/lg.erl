@@ -87,6 +87,8 @@ trace_pattern({app, App}) when is_atom(App) ->
     {ok, Mods} = application:get_key(App, modules),
     trace_patterns(Mods);
 trace_pattern(Mod) when is_atom(Mod) ->
+    %% The module must be loaded before we attempt to trace it.
+    _ = code:load_file(Mod),
     _ = erlang:trace_pattern({Mod, '_', '_'}, true, [local]).
 
 stop() ->

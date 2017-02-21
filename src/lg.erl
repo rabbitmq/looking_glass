@@ -72,9 +72,10 @@ do_trace(Input, TracerMod, TracerOpts, Opts) ->
     %%
     %% @todo It might be useful to count the number of sends
     %% or receives a function does.
+    Mode = maps:get(mode, Opts, trace),
     _ = erlang:trace(processes, true, [
         call, procs, timestamp, arity, return_to,
-        {tracer, lg_tracer, #{tracers => Tracers}}
+        {tracer, lg_tracer, #{mode => Mode, tracers => Tracers}}
     ]),
     trace_patterns(Input),
     ok.

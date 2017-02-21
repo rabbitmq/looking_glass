@@ -41,6 +41,7 @@
     A(in_exiting) \
     A(link) \
     A(match_spec_result) \
+    A(mode) \
     A(monotonic) \
     A(ok) \
     A(open) \
@@ -48,6 +49,7 @@
     A(out_exited) \
     A(out_exiting) \
     A(percent) \
+    A(profile) \
     A(receive) \
     A(register) \
     A(remove) \
@@ -108,7 +110,7 @@ void unload(ErlNifEnv* env, void* priv_data)
 
 NIF_FUNCTION(enabled)
 {
-    ERL_NIF_TERM tracers, head;
+    ERL_NIF_TERM mode, tracers, head;
     ErlNifPid tracer;
 
     int is_trace_status = enif_is_identical(atom_trace_status, argv[0]);
@@ -141,6 +143,19 @@ NIF_FUNCTION(enabled)
     // @todo Discard trace events we don't care about depending
     // on the lg:trace options. Note that we must always allow
     // trace_status.
+
+    // Discard events we don't need when the tracer mode is 'profile'.
+    // The default is to leave all events that were enabled by Erlang.
+    if (enif_get_map_value(env, argv[1], atom_mode, &mode)) {
+        if (enif_is_identical(atom_profile, mode)) {
+            if (!(
+                enif_is_identical(atom_call, argv[0]) ||
+                enif_is_identical(atom_return_to, argv[0]) ||
+                enif_is_identical(atom_exit, argv[0]) ||
+                enif_is_identical(atom_trace_status, argv[0])))
+                return on_error;
+        }
+    }
 
     return atom_trace;
 }

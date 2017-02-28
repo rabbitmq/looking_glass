@@ -18,8 +18,14 @@
 -type input() :: pattern() | [pattern()].
 
 -type opts() :: #{
+    mode => trace | profile,
     pool_id => any(),
-    pool_size => pos_integer()
+    pool_size => pos_integer(),
+    running => boolean(),
+    targets => [
+        pid() | port() | all | processes | ports |
+        existing | existing_processes | existing_ports |
+        new | new_processes | new_ports]
 }.
 
 -spec trace(input()) -> ok.
@@ -53,6 +59,16 @@ do_trace(Input, TracerMod, TracerOpts, Opts) ->
         type => supervisor
     }),
     Tracers = lg_tracer_pool:tracers(PoolPid),
+    Mode = maps:get(mode, Opts, trace),
+    Running = maps:get(running, Opts, false),
+    Targets = maps:get(targets, Opts, [processes]),
+    trace_targets(Targets, #{mode => Mode, tracers => Tracers}, Running),
+    trace_patterns(Input),
+    ok.
+
+trace_targets([], _, _) ->
+    ok;
+trace_targets([Target|Tail], Opts, Running) ->
     %% We currently enable the following trace flags:
     %% - call: function calls
     %% - procs: process exit events; plus others we ignore
@@ -60,18 +76,16 @@ do_trace(Input, TracerMod, TracerOpts, Opts) ->
     %% - timestamp: events include the current timestamp
     %% - arity: function calls only include the arity, not arguments
     %% - return_to: return from functions
+    %% - set_on_spawn: propagate trace flags to any children processes
     %%
     %% @todo It might be useful to count the number of sends
     %% or receives a function does.
-    Mode = maps:get(mode, Opts, trace),
-    Running = maps:get(running, Opts, false),
-    _ = erlang:trace(processes, true, [
-        call, procs, timestamp, arity, return_to,
-        {tracer, lg_tracer, #{mode => Mode, tracers => Tracers}}
+    _ = erlang:trace(Target, true, [
+        call, procs, timestamp, arity, return_to, set_on_spawn,
+        {tracer, lg_tracer, Opts}
         |[running || Running]
     ]),
-    trace_patterns(Input),
-    ok.
+    trace_targets(Tail, Opts, Running).
 
 trace_patterns(Input) ->
     lists:foreach(fun trace_pattern/1, Input).

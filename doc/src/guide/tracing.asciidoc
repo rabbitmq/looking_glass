@@ -1,0 +1,243 @@
+== Tracing
+
+Looking Glass is both a tracing and a profiling tool.
+In this chapter we will take a look at the tracing
+capabilities of the tool, and also learn how to create
+trace files which are necessary for profiling.
+
+=== First steps
+
+Let's start by tracing everything.
+
+Open an Erlang shell and run the following command:
+
+[source,erlang]
+----
+1> lg:trace('_').
+{link,<0.4.0>,1488297881224444,#Port<0.692>}
+{getting_unlinked,<0.4.0>,1488297881224533,#Port<0.692>}
+{link,<0.4.0>,1488297881224640,#Port<0.693>}
+{getting_unlinked,<0.4.0>,1488297881224720,#Port<0.693>}
+{link,<0.4.0>,1488297881224817,#Port<0.694>}
+{getting_unlinked,<0.4.0>,1488297881224881,#Port<0.694>}
+{link,<0.4.0>,1488297881224979,#Port<0.695>}
+{getting_unlinked,<0.4.0>,1488297881225060,#Port<0.695>}
+...
+----
+
+As you can see we get a lot of output. That's because
+the `lg:trace/1` function will by default output the
+raw trace events to the console. We also used the atom
+`'_'` to tell Looking Glass to trace all modules, and
+didn't restrict which process should be traced.
+
+Needless to say, do not do this in production.
+
+The trace events always come with an event name, the pid
+of the process where the event happened, a timestamp in
+microseconds and one or two extra elements providing
+extra context about the event.
+
+For example the following event is a function call occuring
+in the process `<0.64.0>` at timestamp `1488297891226328`
+to `supervisor:handle_info/2`.
+
+[source,erlang]
+----
+{call,<0.64.0>,1488297891226328,{supervisor,handle_info,2}}
+----
+
+=== Stop tracing
+
+To stop tracing, simply call:
+
+[source,erlang]
+----
+2> lg:stop().
+----
+
+=== Tracing specific modules
+
+In order to get a more interesting output we need to filter
+what will be traced. We may for example only want the events
+from the module `shell`:
+
+[source,erlang]
+----
+1> lg:trace(shell).
+...
+{call,<0.58.0>,1488298545020494,{shell,result_will_be_saved,0}}
+{call,<0.58.0>,1488298545020497,{shell,get_history_and_results,0}}
+{call,<0.58.0>,1488298545020498,{shell,get_env,2}}
+{return_to,<0.58.0>,1488298545020501,{shell,get_history_and_results,0}}
+{call,<0.58.0>,1488298545020502,{shell,get_env,2}}
+{return_to,<0.58.0>,1488298545020503,{shell,get_history_and_results,0}}
+{return_to,<0.58.0>,1488298545020504,{shell,result_will_be_saved,0}}
+...
+----
+
+We can also request to trace a list of modules:
+
+[source,erlang]
+----
+1> lg:trace([shell, user_drv]).
+...
+{call,<0.58.0>,1488299067458321,{shell,record_print_fun,1}}
+{return_to,<0.58.0>,1488299067458322,{shell,pp,4}}
+{call,<0.58.0>,1488299067458323,{shell,enc,0}}
+{call,<0.49.0>,1488299067459603,{user_drv,handle_req,4}}
+{call,<0.49.0>,1488299067459605,{user_drv,get_unicode_state,1}}
+...
+----
+
+=== Tracing applications
+
+In addition to providing modules, you can provide OTP applications.
+When you do so all the modules belonging to the application will
+be traced. We can of course trace Looking Glass itself:
+
+[source,erlang]
+----
+1> lg:trace({app, looking_glass}).
+{link,<0.4.0>,1488299179652509,#Port<0.688>}
+{getting_unlinked,<0.4.0>,1488299179652621,#Port<0.688>}
+{call,<0.58.0>,1488299179653161,{lg,'-trace_patterns/1-fun-0-',1}}
+{call,<0.58.0>,1488299179653164,{lg,trace_pattern,1}}
+...
+----
+
+Note that Looking Glass will disable tracing on the tracer processes
+themselves (to avoid an infinite recursion). More on that later.
+
+You can trace any combination of modules and applications:
+
+[source,erlang]
+----
+1> lg:trace([shell, {app, looking_glass}]).
+...
+----
+
+=== Tracing specific processes
+
+// @todo
+
+TODO!
+
+=== Tracer definition callbacks
+
+// @todo
+
+A planned feature is to allow applications to define interesting
+modules and processes in callbacks and let Looking Glass call those
+to setup tracing. A combination of callbacks would also be possible.
+
+=== Tracers
+
+Looking Glass comes with a number of tracers. The default is called
+`lg_raw_console_tracer` and simply outputs the events to the console,
+without any formatting applied.
+
+The default `lg:trace/1` call is equivalent to the following:
+
+[source,erlang]
+----
+1> lg:trace(shell, lg_raw_console_tracer, undefined, #{}).
+----
+
+The arguments are, in order, the trace patterns (the modules or
+applications that need to be traced), the tracer module, the tracer
+options, and the Looking Glass options.
+
+=== Tracing to file
+
+Looking Glass comes with a tracer that saves all events directly
+into a compressed file. Trace files can be used for replaying events
+(for example if you're looking for something specific when debugging)
+or for profiling.
+
+The options for this tracer are only the filename:
+
+[source,erlang]
+----
+1> lg:trace('_', lg_file_tracer, "traces.gz").
+----
+
+If you play with the shell a little after running this command,
+and then run `lg:stop().` you can see that the following files
+have been created:
+
+[source,bash]
+----
+$ ls -l traces.gz.*
+-rw-r--r-- 1 essen essen 333676 Feb 28 18:24 traces.gz.1
+-rw-r--r-- 1 essen essen 384471 Feb 28 18:24 traces.gz.2
+-rw-r--r-- 1 essen essen 333776 Feb 28 18:24 traces.gz.3
+-rw-r--r-- 1 essen essen  11689 Feb 28 18:24 traces.gz.4
+----
+
+Looking Glass will create one trace file per scheduler by
+default (which is typically equal to the number of cores
+you have on your machine). The files are split so that
+all the events of one process are always stored in the
+same file.
+
+We can use the file reader module coming with Looking Glass
+to inspect the contents of the files:
+
+[source,erlang]
+----
+2> lg_file_reader:foreach(fun(E) -> erlang:display(E) end, "traces.gz.1").
+{call,<0.51.0>,1488302656982110,{group,io_request,5}}
+{call,<0.51.0>,1488302656982114,{group,io_request,4}}
+{call,<0.51.0>,1488302656982117,{group,get_tty_geometry,1}}
+{call,<0.75.0>,1488302656982129,{file_io_server,io_request,2}}
+...
+----
+
+Careful though, don't run this on production either!
+Trace files can become really, really big.
+
+You may also write a slightly larger fun to filter what
+you want to see, for example all events from a single
+process:
+
+[source,erlang]
+----
+3> Pid = pid(0,51,0).
+<0.51.0>
+4> F = fun(E) when element(2, E) =:= Pid ->
+            erlang:display(E);
+          (_) ->
+            ok
+       end.
+#Fun<erl_eval.6.52032458>
+5> lg_file_reader:foreach(F, "traces.gz.1").
+{call,<0.51.0>,1488302656982110,{group,io_request,5}}
+{call,<0.51.0>,1488302656982114,{group,io_request,4}}
+{call,<0.51.0>,1488302656982117,{group,get_tty_geometry,1}}
+{return_to,<0.51.0>,1488302656982306,{group,io_request,4}}
+...
+----
+
+=== Tracer mode
+
+When tracing to file for the purposes of profiling, you
+most likely do not care about certain events, like processes
+being linked. To disable any unnecessary event for profiling,
+pass the `mode` option:
+
+[source,erlang]
+----
+1> lg:trace('_', lg_file_tracer, "traces.gz", #{mode => profile}).
+----
+
+You can also get extra events that are only useful for profiling
+by enabling options. The `running` option will enable events
+indicating when processes are scheduled in or out. It's generally
+useful to have as it enables additional stats, but can take a lot
+of resources and so isn't enabled by default:
+
+[source,erlang]
+----
+1> lg:trace('_', lg_file_tracer, "traces.gz", #{mode => profile, running => true}).
+----

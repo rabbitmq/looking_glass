@@ -2,6 +2,10 @@
 
 -export([profile/2]).
 -export([profile/3]).
+-export([profile_many/2]).
+-export([profile_many/3]).
+
+%% @todo Add an option with a list of modules to exclude.
 
 -type opts() :: #{
     %% Whether we filter the output per process.
@@ -59,12 +63,34 @@
 profile(Input, Output) ->
     profile(Input, Output, #{}).
 
+-spec profile(file:filename_all(), file:filename_all(), opts()) -> ok.
 profile(Input, Output, Opts) ->
     {ok, OutDevice} = file:open(Output, [write]),
     State = #state{input=Input, output=Output, output_device=OutDevice, opts=Opts},
     write_header(State),
-    {ok, _} = lg_file_reader:fold(fun handle_event/2, State, Input),
+    {ok, FinalState} = lg_file_reader:fold(fun handle_event/2, State, Input),
+    flush(FinalState),
     _ = file:close(OutDevice),
+    ok.
+
+flush(State=#state{processes=Procs}) ->
+    maps:fold(fun(Pid, #proc{mfas=MFAs}, _) ->
+        write_mfas(Pid, MFAs, State)
+    end, undefined, Procs),
+    ok.
+
+-spec profile_many(file:filename(), file:filename()) -> ok.
+profile_many(Wildcard, Prefix) ->
+    profile_many(Wildcard, Prefix, #{}).
+
+-spec profile_many(file:filename(), file:filename(), opts()) -> ok.
+profile_many(Wildcard, Prefix, Opts) ->
+    Files = filelib:wildcard(Wildcard),
+    Seq = lists:seq(1, length(Files)),
+    OutFiles = [Prefix ++ "." ++ integer_to_list(N) || N <- Seq],
+    Many = lists:zip(Files, OutFiles),
+    %% @todo Do it in parallel.
+    _ = [profile(Input, Output, Opts) || {Input, Output} <- Many],
     ok.
 
 %% We handle trace events one by one, keeping track of the

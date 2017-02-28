@@ -87,7 +87,7 @@ handle_event({return_to, Pid, Ts, MFA}, State) ->
 %%
 %% We use the atom exit because we know it will not match
 %% a function call and will therefore unfold everything.
-handle_event({exit, Pid, Ts, _Reason}, State0=#state{processes=Procs}) ->
+handle_event({exit, Pid, Ts, _Reason}, State0) ->
     case is_process_profiled(Pid, State0) of
         {true, Proc} ->
             State=#state{processes=Procs} = handle_return_to(Pid, exit, Ts, Proc, State0),

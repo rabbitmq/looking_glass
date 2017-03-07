@@ -1,3 +1,118 @@
+[[callgrind]]
 == Callgrind profiling
 
-TODO!
+Looking Glass' primary purpose is the profiling of
+Erlang applications. This is done by first tracing
+events to a file or socket and then processing it
+to extract useful output.
+
+Profiling tools generally have a few different types
+of output. This chapter is about callgrind output,
+which can be read using the `qcachegrind`/`kcachegrind`
+tool.
+
+=== Quick start
+
+Assuming you generated trace files using the profile
+mode and the running flag, as detailed in the
+xref:tracing_running[Tracing chapter], you can
+generate callgrind.out files using the following
+command:
+
+[source,erlang]
+----
+1> lg_callgrind:profile_many("traces.gz.*", "callgrind.out",
+    #{running => true}).
+----
+
+This will create a callgrind.out file for all trace files
+you generated. For example if you had 'traces.gz.1' and
+'traces.gz.2', you should now also have 'callgrind.out.1'
+and 'callgrind.out.2'.
+
+You can now open these two files in the cachegrind tool,
+either from the user interface or from the command line:
+
+[source,bash]
+----
+$ qcachegrind callgrind.out
+----
+
+It will automatically detect and open all files matching
+the `callgrind.out.*` pattern.
+
+=== Profiling one file
+
+You can profile one file by calling the function
+`lg_callgrind:profile/2,3`. It takes the trace file name,
+the output file name and an optional map of options:
+
+[source,erlang]
+----
+1> lg_callgrind:profile("traces.gz.1", "callgrind.out.1").
+----
+
+It also accepts options:
+
+[source,erlang]
+----
+1> lg_callgrind:profile("traces.gz.1", "callgrind.out.1",
+    #{running => true}).
+----
+
+=== Profiling many files
+
+A convenience function is available for profiling many
+files at once: `lg_callgrind:profile_many/2,3`. It takes
+a wildcard pattern as first argument and a file name
+prefix as second argument:
+
+[source,erlang]
+----
+1> lg_callgrind:profile_many("traces.gz.*", "callgrind.out").
+----
+
+If there were two trace files, this will result in two
+'callgrind.out' files: 'callgrind.out.1' and 'callgrind.out.2'.
+
+It also accepts options:
+
+[source,erlang]
+----
+1> lg_callgrind:profile_many("traces.gz.*", "callgrind.out",
+    #{running => true}).
+----
+
+=== Running information
+
+When the trace files contain running information, meaning
+they were created with the `running` flag enabled, you
+need to also pass the `running` flag to the profiler in
+order to have that information available in 'callgrind.out'
+files:
+
+[source,erlang]
+----
+1> lg_callgrind:profile_many("traces.gz.*", "callgrind.out",
+    #{running => true}).
+----
+
+=== Scope
+
+By default the scope of the trace events is global. This
+means that the cachegrind tool will group all events
+together regardless of where they happened. This is
+useful to see which functions take the most resources
+overall.
+
+Other times you may want to see which *processes* take
+the most resources. To do this you need to instruct
+Looking Glass to keep the process information when
+generating the 'callgrind.out' files. This is done
+using the `scope` option:
+
+[source,erlang]
+----
+1> lg_callgrind:profile_many("traces.gz.*", "callgrind.out",
+    #{running => true}).
+----

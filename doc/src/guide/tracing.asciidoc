@@ -1,3 +1,4 @@
+[[tracing]]
 == Tracing
 
 Looking Glass is both a tracing and a profiling tool.
@@ -231,6 +232,7 @@ pass the `mode` option:
 1> lg:trace('_', lg_file_tracer, "traces.gz", #{mode => profile}).
 ----
 
+[[tracing_running]]
 You can also get extra events that are only useful for profiling
 by enabling options. The `running` option will enable events
 indicating when processes are scheduled in or out. It's generally
@@ -239,5 +241,6 @@ of resources and so isn't enabled by default:
 
 [source,erlang]
 ----
-1> lg:trace('_', lg_file_tracer, "traces.gz", #{mode => profile, running => true}).
+1> lg:trace('_', lg_file_tracer, "traces.gz",
+    #{mode => profile, running => true}).
 ----

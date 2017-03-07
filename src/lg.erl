@@ -13,9 +13,13 @@
 -export([stop/0]).
 -export([stop/1]).
 
-%% @todo {profile, M::atom(), F::atom()}
--type pattern() :: module() | {app, atom()}.
--type input() :: pattern() | [pattern()].
+-type pattern() :: module() | {app, atom()} | {callback, module(), atom()}.
+
+-type input() :: [pattern()].
+-export_type([input/0]).
+
+%% The trace functions input is not as strict for user convenience.
+-type user_input() :: pattern() | input().
 
 -type opts() :: #{
     mode => trace | profile,
@@ -28,19 +32,19 @@
         new | new_processes | new_ports]
 }.
 
--spec trace(input()) -> ok.
+-spec trace(user_input()) -> ok.
 trace(Input) ->
     trace(Input, lg_raw_console_tracer).
 
--spec trace(input(), module()) -> ok.
+-spec trace(user_input(), module()) -> ok.
 trace(Input, TracerMod) ->
     trace(Input, TracerMod, undefined, #{}).
 
--spec trace(input(), module(), any()) -> ok.
+-spec trace(user_input(), module(), any()) -> ok.
 trace(Input, TracerMod, TracerOpts) ->
     trace(Input, TracerMod, TracerOpts, #{}).
 
--spec trace(input(), module(), any(), opts()) -> ok.
+-spec trace(user_input(), module(), any(), opts()) -> ok.
 trace(Input, TracerMod, TracerOpts, Opts) when is_list(Input) ->
     do_trace(Input, TracerMod, TracerOpts, Opts);
 trace(Input, TracerMod, TracerOpts, Opts) ->
@@ -90,6 +94,9 @@ trace_targets([Target|Tail], Opts, Running) ->
 trace_patterns(Input) ->
     lists:foreach(fun trace_pattern/1, Input).
 
+trace_pattern({callback, Mod, Fun}) when is_atom(Mod), is_atom(Fun) ->
+    Patterns = Mod:Fun(),
+    trace_patterns(Patterns);
 trace_pattern({app, App}) when is_atom(App) ->
     {ok, Mods} = application:get_key(App, modules),
     trace_patterns(Mods);

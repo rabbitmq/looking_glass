@@ -126,11 +126,40 @@ TODO!
 
 === Tracer definition callbacks
 
-// @todo
+For ease of use, Looking Glass allows you to define functions in
+your code that return interesting patterns. This allows you to
+define areas of your code that you profile often, or to dynamically
+generate the list if necessary.
 
-A planned feature is to allow applications to define interesting
-modules and processes in callbacks and let Looking Glass call those
-to setup tracing. A combination of callbacks would also be possible.
+To use callbacks, simply provide a callback tuple:
+
+[source,erlang]
+----
+1> lg:trace({callback, lg_callgrind, patterns}).
+----
+
+You can of course use it in combination with other inputs:
+
+[source,erlang]
+----
+1> lg:trace([shell, {callback, lg_callgrind, patterns}]).
+----
+
+You can also combine as many callbacks as you wish.
+
+The callback takes the following form:
+
+[source,erlang]
+----
+patterns() -> lg:input().
+----
+
+The function name can be anything. A module may have more than one
+Looking Glass callback.
+
+The return value is a list of patterns that will be traced.
+It can therefore contain modules, applications or other
+callbacks.
 
 === Tracers
 

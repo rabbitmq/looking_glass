@@ -1,5 +1,6 @@
 -module(lg_callgrind).
 
+-export([patterns/0]).
 -export([profile/2]).
 -export([profile/3]).
 -export([profile_many/2]).
@@ -18,7 +19,7 @@
     %% The MFA for the call.
     mfa :: atom(),
     %% The source file name.
-    source :: string(),
+    source :: {string(), pos_integer()},
     %% The timestamp for the call.
     ts :: pos_integer(),
     %% Execution time including subcalls.
@@ -58,6 +59,10 @@
     %% Cache of source file information.
     sources = #{} :: #{module() => string()}
 }).
+
+-spec patterns() -> lg:input().
+patterns() ->
+    [?MODULE, lg_file_reader].
 
 -spec profile(file:filename_all(), file:filename_all()) -> ok.
 profile(Input, Output) ->

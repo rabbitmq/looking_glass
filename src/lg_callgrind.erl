@@ -294,12 +294,10 @@ write_mfas(Pid, MFAs, State) ->
     _ = [write_call(Pid, Call, State) || Call <- maps:values(MFAs)],
     ok.
 
-write_call(Pid, #call{mfa=MFA, source=Source, self=Self, wait=Wait,
+write_call(Pid, #call{mfa=MFA, source={Source, LN}, self=Self, wait=Wait,
         wait_count=WaitCount, calls=Calls0},
         #state{output_device=OutDevice, opts=Opts}) ->
     Calls = maps:values(Calls0),
-    %% @todo It would be useful to look at the actual line number.
-    LN = 1,
     Ob = case Opts of
         #{scope := per_process} ->
             ["ob=", io_lib:write(Pid), "\n"];
@@ -320,23 +318,24 @@ write_call(Pid, #call{mfa=MFA, source=Source, self=Self, wait=Wait,
         "fl=", Source, "\n"
         "fn=", atom_to_list(MFA), "\n",
         integer_to_list(LN), " ", integer_to_list(Self), RunningCosts, "\n",
-        format_subcalls(Calls),
+        format_subcalls(LN, Calls),
         "\n"]).
 
-format_subcalls([]) ->
+format_subcalls(_, []) ->
     [];
 %% @todo We don't need to write the filename for functions in the same module.
 %% @todo We also don't want to put the full file name; instead we should remove
 %% the prefix (path to the release).
-format_subcalls([#call{mfa=MFA, source=Source, incl=Incl, count=Count, calls=_Calls}|Tail]) ->
-    %% @todo It would be useful to look at the actual line number.
-    LN = TargetLN = 1,
+%%
+%% We only look at where the function is defined, we can't really get
+%% the actual line number where the call happened, unfortunately.
+format_subcalls(LN, [#call{mfa=MFA, source={Source, TargetLN}, incl=Incl, count=Count, calls=_Calls}|Tail]) ->
     [[
         "cfi=", Source, "\n"
         "cfn=", atom_to_list(MFA), "\n"
-        "calls=", integer_to_list(Count), integer_to_list(TargetLN), "\n",
+        "calls=", integer_to_list(Count), " ", integer_to_list(TargetLN), "\n",
         integer_to_list(LN), " ", integer_to_list(Incl), "\n"
-    ]|format_subcalls(Tail)].
+    ]|format_subcalls(LN, Tail)].
 
 convert_mfa(undefined) ->
     undefined;
@@ -346,29 +345,58 @@ convert_mfa({M0, F0, A0}) ->
     A = integer_to_binary(A0),
     binary_to_atom(<<M/binary, $:, F/binary, $/, A/binary>>, latin1).
 
-%% @todo What about the line number of the function being called?
-find_source(MFA={Module, _, _}, State=#state{sources=Cache}) ->
+find_source(MFA, State=#state{sources=Cache}) ->
     case Cache of
-        #{Module := Source} -> {Source, State};
+        #{MFA := Source} -> {Source, State};
         _ -> do_find_source(MFA, State)
     end.
 
-do_find_source({Module, _, _}, State=#state{sources=Cache}) ->
+do_find_source(MFA={Module, _, _}, State=#state{sources=Cache}) ->
     Source = try
         %% If the module is in the path, we can simply query
         %% it for the source file.
         Info = Module:module_info(compile),
         {_, Src} = lists:keyfind(source, 1, Info),
+        LN = find_line_number(MFA),
         %% @todo We don't want to return an absolute path,
         %% but rather the app/src/file.erl path if it's in
         %% an application, or just folder/file.erl if not.
         %% This allows different users to point to the
         %% same source at different locations on their machine.
-        Src
+        {Src, LN}
     catch _:_ ->
         %% If we couldn't use the beam file to retrieve the
         %% source file name, we just append .erl and hope for
-        %% the best.
-        atom_to_list(Module) ++ ".erl"
+        %% the best. The line number will of course be incorrect.
+        {atom_to_list(Module) ++ ".erl", 1}
     end,
-    {Source, State#state{sources=Cache#{Module => Source}}}.
+    {Source, State#state{sources=Cache#{MFA => Source}}}.
+
+%% We extract the line number of the function by loading the
+%% beam file (which is already loaded when we reach this function)
+%% and looking into the abstract code directly. When something
+%% goes wrong, for example the module was not compiled with
+%% +debug_info, the function will return line number 1.
+%%
+%% Note that we can only retrieve the location of the function.
+%% For functions with many clauses we are not able to properly
+%% identify which clause was involved. It's probably a good
+%% idea to structure your code to have more functions than
+%% function clauses, especially when using behaviours.
+%%
+%% While this is an expensive operation, we cache the result
+%% and therefore this function will not be called very often.
+find_line_number({Module, Function, Arity}) ->
+    try
+        {Module, Beam, _} = code:get_object_code(Module),
+        {ok, {Module, Chunks}} = beam_lib:chunks(Beam, [abstract_code]),
+        [{abstract_code, {raw_abstract_v1, Forms}}] = Chunks,
+        [{_, LN, _, _, _}] = [Form || Form={function, _, F, A, _} <-
+            Forms, F =:= Function, A =:= Arity],
+        LN
+    catch _:_ ->
+        %% We cannot currently retrieve line number information
+        %% for list comprehensions and funs. We always return
+        %% line number 1 in these cases.
+        1
+    end.

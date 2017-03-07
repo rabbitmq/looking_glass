@@ -126,6 +126,8 @@ The cachegrind tool was built with imperative code in mind.
 It does not deal too well with recursion. This means that
 the number of times functions are called might not always
 be correct, especially for functions that call themselves.
+You can see an example of this issue when looking at the
+call graph, for example.
 
 Looking Glass uses ELF Object field for storing the pid of
 the process when the `scope => per_process` option is used.
@@ -155,3 +157,20 @@ may not be accurate is the time spent doing port
 operations which may appear as active time when the
 process is mostly waiting. Both will be improved
 in the future.
+
+While Looking Glass provides line number information
+about the various calls, it is not able to identify
+which function clause was involved during this call.
+This means that the call information for functions
+with a lot of clauses will get aggregated at the same
+line number when looking at the source code in the
+cachegrind tool. This has an important impact on
+most standard behaviors, including `handle_event`
+from `gen_statem`. You can however structure your
+code so that clause-heavy functions only dispatch
+to other functions, in turn getting a better view
+in the cachegrind tool.
+
+Looking Glass is not able to find the line number
+of list comprehensions and funs at this time. They
+will always point to line number 1.

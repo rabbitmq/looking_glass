@@ -120,11 +120,40 @@ You can trace any combination of modules and applications:
 
 === Tracing specific processes
 
-// @todo
+Looking Glass traces all processes by default.
 
-TODO!
+Large systems tend to have many processes and this can generate
+a lot of noise, especially if you are trying to optimize a
+specific component.
 
-=== Tracer definition callbacks
+You can specify which processes should be traced using the
+input option `scope`:
+
+[source,erlang]
+----
+1> lg:trace([{scope, [self()]}, io]).
+{call,<0.58.0>,1489494935163831,{io,cokolumns,0}}
+{call,<0.58.0>,1489494935163841,{io,default_output,0}}
+{return_to,<0.58.0>,1489494935163844,{io,columns,0}}
+{call,<0.58.0>,1489494935163846,{io,columns,1}}
+...
+----
+
+The list found in the `scope` tuple can take the same values
+as the first argument to `erlang:trace/3`. When the tuple is
+missing the default will be `processes`.
+
+The scope tuple can be found multiple time in the input.
+This is particularly useful when combining trace definition
+callbacks.
+
+Looking Glass will trace all the processes specified but
+also the processes that they create. This means that when
+you provide a supervisor pid, all its children will also
+be traced, as long as they were started after the start
+of the trace session.
+
+=== Trace definition callbacks
 
 For ease of use, Looking Glass allows you to define functions in
 your code that return interesting patterns. This allows you to
@@ -157,9 +186,22 @@ patterns() -> lg:input().
 The function name can be anything. A module may have more than one
 Looking Glass callback.
 
-The return value is a list of patterns that will be traced.
-It can therefore contain modules, applications or other
-callbacks.
+The return value is a list of patterns and scopes that will
+be traced. It can therefore contain modules, applications
+or other callbacks.
+
+An example callback could be:
+
+[source,erlang]
+----
+-module(ranch_lg).
+-export([connections/0]).
+
+%% Trace all events but only from the TCP connection processes.
+connections() ->
+    ConnsPid = ranch_server:get_connections_sup(tcp_echo),
+    ['_', {scope, [ConnsPid]}].
+----
 
 === Tracers
 

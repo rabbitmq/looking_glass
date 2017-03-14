@@ -14,8 +14,12 @@
 -export([stop/1]).
 
 -type pattern() :: module() | {app, atom()} | {callback, module(), atom()}.
+-type scope() :: {scope, [
+    pid() | port() | all | processes | ports |
+    existing | existing_processes | existing_ports |
+    new | new_processes | new_ports]}.
 
--type input() :: [pattern()].
+-type input() :: [pattern() | scope()].
 -export_type([input/0]).
 
 %% The trace functions input is not as strict for user convenience.
@@ -25,11 +29,7 @@
     mode => trace | profile,
     pool_id => any(),
     pool_size => pos_integer(),
-    running => boolean(),
-    targets => [
-        pid() | port() | all | processes | ports |
-        existing | existing_processes | existing_ports |
-        new | new_processes | new_ports]
+    running => boolean()
 }.
 
 -spec trace(user_input()) -> ok.
@@ -50,7 +50,7 @@ trace(Input, TracerMod, TracerOpts, Opts) when is_list(Input) ->
 trace(Input, TracerMod, TracerOpts, Opts) ->
     trace([Input], TracerMod, TracerOpts, Opts).
 
-do_trace(Input, TracerMod, TracerOpts, Opts) ->
+do_trace(Input0, TracerMod, TracerOpts, Opts) ->
     %% @todo Remove eventually?
     _ = application:ensure_all_started(looking_glass),
     %% Start the pool of tracer processes.
@@ -65,14 +65,37 @@ do_trace(Input, TracerMod, TracerOpts, Opts) ->
     Tracers = lg_tracer_pool:tracers(PoolPid),
     Mode = maps:get(mode, Opts, trace),
     Running = maps:get(running, Opts, false),
-    Targets = maps:get(targets, Opts, [processes]),
-    trace_targets(Targets, #{mode => Mode, tracers => Tracers}, Running),
-    trace_patterns(Input),
+    Input1 = flatten(Input0, []),
+    Input2 = ensure_pattern(Input1),
+    Input = ensure_scope(Input2),
+    trace_input(Input, #{mode => Mode, tracers => Tracers}, Running),
     ok.
 
-trace_targets([], _, _) ->
+flatten([], Acc) ->
+    lists:flatten(Acc);
+flatten([{callback, Mod, Fun}|Tail], Acc) when is_atom(Mod), is_atom(Fun) ->
+    flatten(Tail, [Mod:Fun()|Acc]);
+flatten([{app, App}|Tail], Acc) when is_atom(App) ->
+    {ok, Mods} = application:get_key(App, modules),
+    flatten(Tail, [Mods|Acc]);
+flatten([Input|Tail], Acc) ->
+    flatten(Tail, [Input|Acc]).
+
+ensure_pattern(Input) ->
+    case [S || S={scope, _} <- Input] of
+        Input -> ['_'|Input];
+        _ -> Input
+    end.
+
+ensure_scope(Input) ->
+    case [S || S={scope, _} <- Input] of
+        [] -> [{scope, [processes]}|Input];
+        _ -> Input
+    end.
+
+trace_input([], _, _) ->
     ok;
-trace_targets([Target|Tail], Opts, Running) ->
+trace_input([{scope, Scope}|Tail], Opts, Running) ->
     %% We currently enable the following trace flags:
     %% - call: function calls
     %% - procs: process exit events; plus others we ignore
@@ -84,26 +107,18 @@ trace_targets([Target|Tail], Opts, Running) ->
     %%
     %% @todo It might be useful to count the number of sends
     %% or receives a function does.
-    _ = erlang:trace(Target, true, [
-        call, procs, timestamp, arity, return_to, set_on_spawn,
-        {tracer, lg_tracer, Opts}
-        |[running || Running]
-    ]),
-    trace_targets(Tail, Opts, Running).
-
-trace_patterns(Input) ->
-    lists:foreach(fun trace_pattern/1, Input).
-
-trace_pattern({callback, Mod, Fun}) when is_atom(Mod), is_atom(Fun) ->
-    Patterns = Mod:Fun(),
-    trace_patterns(Patterns);
-trace_pattern({app, App}) when is_atom(App) ->
-    {ok, Mods} = application:get_key(App, modules),
-    trace_patterns(Mods);
-trace_pattern(Mod) when is_atom(Mod) ->
+    _ = [erlang:trace(PidPortSpec, true, [
+            call, procs, timestamp, arity, return_to, set_on_spawn,
+            {tracer, lg_tracer, Opts}
+            |[running || Running]
+        ])
+    || PidPortSpec <- Scope],
+    trace_input(Tail, Opts, Running);
+trace_input([Mod|Tail], Opts, Running) when is_atom(Mod) ->
     %% The module must be loaded before we attempt to trace it.
     _ = code:load_file(Mod),
-    _ = erlang:trace_pattern({Mod, '_', '_'}, true, [local]).
+    _ = erlang:trace_pattern({Mod, '_', '_'}, true, [local]),
+    trace_input(Tail, Opts, Running).
 
 stop() ->
     stop(default).

@@ -1,5 +1,7 @@
 = Looking Glass User Guide
 
+include::introduction.asciidoc[Introduction]
+
 include::tracing.asciidoc[Tracing]
 
 include::callgrind.asciidoc[Callgrind profiling]

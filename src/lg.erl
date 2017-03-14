@@ -76,6 +76,7 @@ flatten([], Acc) ->
 flatten([{callback, Mod, Fun}|Tail], Acc) when is_atom(Mod), is_atom(Fun) ->
     flatten(Tail, [Mod:Fun()|Acc]);
 flatten([{app, App}|Tail], Acc) when is_atom(App) ->
+    _ = application:load(App),
     {ok, Mods} = application:get_key(App, modules),
     flatten(Tail, [Mods|Acc]);
 flatten([Input|Tail], Acc) ->

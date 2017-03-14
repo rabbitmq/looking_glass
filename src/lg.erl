@@ -74,7 +74,8 @@ do_trace(Input0, TracerMod, TracerOpts, Opts) ->
 flatten([], Acc) ->
     lists:flatten(Acc);
 flatten([{callback, Mod, Fun}|Tail], Acc) when is_atom(Mod), is_atom(Fun) ->
-    flatten(Tail, [Mod:Fun()|Acc]);
+    Input = flatten(Mod:Fun(), []),
+    flatten(Tail, [Input|Acc]);
 flatten([{app, App}|Tail], Acc) when is_atom(App) ->
     _ = application:load(App),
     {ok, Mods} = application:get_key(App, modules),

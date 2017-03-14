@@ -57,7 +57,7 @@
     %% List of processes.
     processes = #{} :: #{pid() => #proc{}},
     %% Cache of source file information.
-    sources = #{} :: #{module() => string()}
+    sources = #{} :: #{mfa() => {string(), pos_integer()}}
 }).
 
 -spec patterns() -> lg:input().
@@ -350,34 +350,16 @@ convert_mfa({M0, F0, A0}) ->
     A = integer_to_binary(A0),
     binary_to_atom(<<M/binary, $:, F/binary, $/, A/binary>>, latin1).
 
-find_source(MFA, State=#state{sources=Cache}) ->
+find_source(MFA, State0=#state{sources=Cache}) ->
     case Cache of
-        #{MFA := Source} -> {Source, State};
-        _ -> do_find_source(MFA, State)
+        #{MFA := Source} ->
+            {Source, State0};
+        _ ->
+            State = #state{sources=#{MFA := Source}} = cache_module(MFA, State0),
+            {Source, State}
     end.
 
-do_find_source(MFA={Module, _, _}, State=#state{sources=Cache}) ->
-    Source = try
-        %% If the module is in the path, we can simply query
-        %% it for the source file.
-        Info = Module:module_info(compile),
-        {_, Src} = lists:keyfind(source, 1, Info),
-        LN = find_line_number(MFA),
-        %% @todo We don't want to return an absolute path,
-        %% but rather the app/src/file.erl path if it's in
-        %% an application, or just folder/file.erl if not.
-        %% This allows different users to point to the
-        %% same source at different locations on their machine.
-        {Src, LN}
-    catch _:_ ->
-        %% If we couldn't use the beam file to retrieve the
-        %% source file name, we just append .erl and hope for
-        %% the best. The line number will of course be incorrect.
-        {atom_to_list(Module) ++ ".erl", 1}
-    end,
-    {Source, State#state{sources=Cache#{MFA => Source}}}.
-
-%% We extract the line number of the function by loading the
+%% We extract the line number of the functions by loading the
 %% beam file (which is already loaded when we reach this function)
 %% and looking into the abstract code directly. When something
 %% goes wrong, for example the module was not compiled with
@@ -390,18 +372,41 @@ do_find_source(MFA={Module, _, _}, State=#state{sources=Cache}) ->
 %% function clauses, especially when using behaviours.
 %%
 %% While this is an expensive operation, we cache the result
-%% and therefore this function will not be called very often.
-find_line_number({Module, Function, Arity}) ->
+%% and therefore this function will only be called once per module.
+cache_module(MFA={Module, _, _}, State0=#state{sources=Cache}) ->
     try
-        {Module, Beam, _} = code:get_object_code(Module),
-        {ok, {Module, Chunks}} = beam_lib:chunks(Beam, [abstract_code]),
-        [{abstract_code, {raw_abstract_v1, Forms}}] = Chunks,
-        [{_, LN, _, _, _}] = [Form || Form={function, _, F, A, _} <-
-            Forms, F =:= Function, A =:= Arity],
-        LN
+        %% If the module is in the path, we can simply query
+        %% it for the source file.
+        Info = Module:module_info(compile),
+        %% @todo We don't want to return an absolute path,
+        %% but rather the app/src/file.erl path if it's in
+        %% an application, or just folder/file.erl if not.
+        %% This allows different users to point to the
+        %% same source at different locations on their machine.
+        {_, Src} = lists:keyfind(source, 1, Info),
+        cache_module(MFA, State0, Src)
     catch _:_ ->
-        %% We cannot currently retrieve line number information
-        %% for list comprehensions and funs. We always return
-        %% line number 1 in these cases.
-        1
+        %% Either the module was not found, or it doesn't
+        %% have a 'source' key in the compile info.
+        %%
+        %% We can't cache the module; on the other hand
+        %% we can cache the result of this operation.
+        %% Just append .erl to the module name and set the
+        %% line number to 1, which is of course incorrect.
+        State0#state{sources=Cache#{MFA => {atom_to_list(Module) ++ ".erl", 1}}}
     end.
+
+cache_module(MFA={Module, _, _}, State=#state{sources=Cache0}, Src) ->
+    {Module, Beam, _} = code:get_object_code(Module),
+    {ok, {Module, Chunks}} = beam_lib:chunks(Beam, [abstract_code]),
+    [{abstract_code, {raw_abstract_v1, Forms}}] = Chunks,
+    Funcs = [{{Module, F, A}, LN} || {function, LN, F, A, _} <- Forms],
+    Cache1 = lists:foldl(fun({Key, LN}, Acc) -> Acc#{Key => {Src, LN}} end, Cache0, Funcs),
+    %% We cannot currently retrieve line number information
+    %% for list comprehensions and funs. We therefore
+    %% cache the correct file with line number set to 1.
+    Cache = case Cache1 of
+        #{MFA := _} -> Cache1;
+        _ -> Cache1#{MFA => {Src, 1}}
+    end,
+    State#state{sources=Cache}.

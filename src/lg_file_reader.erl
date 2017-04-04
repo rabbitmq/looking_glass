@@ -7,19 +7,26 @@
 -export([read_event/1]).
 -export([close/1]).
 
+-record(state, {
+    io_device :: file:io_device(),
+    ctx :: lz4f:dctx(),
+    buffer = <<>> :: binary()
+}).
+
 %% High level API.
 
 fold(Fun, Acc, Filename) ->
     {ok, IoDevice} = open(Filename),
-    Ret = fold1(IoDevice, Fun, Acc),
+    Ctx = lz4f:create_decompression_context(),
+    Ret = fold1(#state{io_device=IoDevice, ctx=Ctx}, Fun, Acc),
     ok = close(IoDevice),
     Ret.
 
-fold1(IoDevice, Fun, Acc0) ->
-    case read_event(IoDevice) of
-        {ok, Event} ->
+fold1(State0, Fun, Acc0) ->
+    case read_event(State0) of
+        {ok, Event, State} ->
             Acc = Fun(Event, Acc0),
-            fold1(IoDevice, Fun, Acc);
+            fold1(State, Fun, Acc);
         eof ->
             {ok, Acc0};
         Error = {error, _, _} ->
@@ -28,15 +35,16 @@ fold1(IoDevice, Fun, Acc0) ->
 
 foreach(Fun, Filename) ->
     {ok, IoDevice} = open(Filename),
-    Ret = foreach1(IoDevice, Fun),
+    Ctx = lz4f:create_decompression_context(),
+    Ret = foreach1(#state{io_device=IoDevice, ctx=Ctx}, Fun),
     ok = close(IoDevice),
     Ret.
 
-foreach1(IoDevice, Fun) ->
-    case read_event(IoDevice) of
-        {ok, Event} ->
+foreach1(State0, Fun) ->
+    case read_event(State0) of
+        {ok, Event, State} ->
             _ = Fun(Event),
-            foreach1(IoDevice, Fun);
+            foreach1(State, Fun);
         eof ->
             ok;
         Error = {error, _, _} ->
@@ -46,32 +54,32 @@ foreach1(IoDevice, Fun) ->
 %% Low level API.
 
 open(Filename) ->
-    file:open(Filename, [read, binary, compressed]).
+    file:open(Filename, [read, binary]).
 
-read_event(IoDevice) ->
-    case file:read(IoDevice, 2) of
-        {ok, <<Size:16>>} ->
-            read_event_body(IoDevice, Size);
+read_event(State=#state{buffer=Buffer}) ->
+    case Buffer of
+        <<Size:16, Bin:Size/binary, Rest/bits>> ->
+            convert_event_body(State#state{buffer=Rest}, Bin);
+        _ ->
+            read_file(State)
+    end.
+
+read_file(State=#state{io_device=IoDevice, ctx=Ctx, buffer=Buffer}) ->
+    case file:read(IoDevice, 1000) of
+        {ok, Data0} ->
+            Data = iolist_to_binary(lz4f:decompress(Ctx, Data0)),
+            read_event(State#state{buffer= <<Buffer/binary, Data/binary>>});
         eof ->
             eof;
         {error, Reason} ->
             {error, Reason,
-                'An error occurred while trying to read the size of an event in the file.'}
+                'An error occurred while trying to read from the file.'}
     end.
 
-read_event_body(IoDevice, Size) ->
-    case file:read(IoDevice, Size) of
-        {ok, Bin} ->
-            convert_event_body(Bin);
-        {error, Reason} ->
-            {error, Reason,
-                'An error occured while trying to read an event from the file.'}
-    end.
-
-convert_event_body(Bin) ->
+convert_event_body(State, Bin) ->
     try binary_to_term(Bin) of
         Term ->
-            {ok, Term}
+            {ok, Term, State}
     catch Class:Reason ->
         {error, {crash, Class, Reason},
             'The binary form of an event could not be decoded to an Erlang term.'}

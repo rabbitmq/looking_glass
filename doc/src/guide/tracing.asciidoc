@@ -227,11 +227,17 @@ into a compressed file. Trace files can be used for replaying events
 (for example if you're looking for something specific when debugging)
 or for profiling.
 
+Looking Glass compresses the trace files using the LZ4 compression
+algorithm. This algorithm was chosen for its very low footprint;
+it allows us to reduce the trace file size without putting a strain
+on the system being traced. The files produced are compatible with
+the LZ4 command line tools.
+
 The options for this tracer are only the filename:
 
 [source,erlang]
 ----
-1> lg:trace('_', lg_file_tracer, "traces.gz").
+1> lg:trace('_', lg_file_tracer, "traces.lz4").
 ----
 
 If you play with the shell a little after running this command,
@@ -240,11 +246,11 @@ have been created:
 
 [source,bash]
 ----
-$ ls -l traces.gz.*
--rw-r--r-- 1 essen essen 333676 Feb 28 18:24 traces.gz.1
--rw-r--r-- 1 essen essen 384471 Feb 28 18:24 traces.gz.2
--rw-r--r-- 1 essen essen 333776 Feb 28 18:24 traces.gz.3
--rw-r--r-- 1 essen essen  11689 Feb 28 18:24 traces.gz.4
+$ ls -l traces.lz4.*
+-rw-r--r-- 1 essen essen 333676 Feb 28 18:24 traces.lz4.1
+-rw-r--r-- 1 essen essen 384471 Feb 28 18:24 traces.lz4.2
+-rw-r--r-- 1 essen essen 333776 Feb 28 18:24 traces.lz4.3
+-rw-r--r-- 1 essen essen  11689 Feb 28 18:24 traces.lz4.4
 ----
 
 Looking Glass will create one trace file per scheduler by
@@ -258,7 +264,7 @@ to inspect the contents of the files:
 
 [source,erlang]
 ----
-2> lg_file_reader:foreach(fun(E) -> erlang:display(E) end, "traces.gz.1").
+2> lg_file_reader:foreach(fun(E) -> erlang:display(E) end, "traces.lz4.1").
 {call,<0.51.0>,1488302656982110,{group,io_request,5}}
 {call,<0.51.0>,1488302656982114,{group,io_request,4}}
 {call,<0.51.0>,1488302656982117,{group,get_tty_geometry,1}}
@@ -283,7 +289,7 @@ process:
             ok
        end.
 #Fun<erl_eval.6.52032458>
-5> lg_file_reader:foreach(F, "traces.gz.1").
+5> lg_file_reader:foreach(F, "traces.lz4.1").
 {call,<0.51.0>,1488302656982110,{group,io_request,5}}
 {call,<0.51.0>,1488302656982114,{group,io_request,4}}
 {call,<0.51.0>,1488302656982117,{group,get_tty_geometry,1}}
@@ -300,7 +306,7 @@ pass the `mode` option:
 
 [source,erlang]
 ----
-1> lg:trace('_', lg_file_tracer, "traces.gz", #{mode => profile}).
+1> lg:trace('_', lg_file_tracer, "traces.lz4", #{mode => profile}).
 ----
 
 [[tracing_running]]
@@ -312,6 +318,6 @@ of resources and so isn't enabled by default:
 
 [source,erlang]
 ----
-1> lg:trace('_', lg_file_tracer, "traces.gz",
+1> lg:trace('_', lg_file_tracer, "traces.lz4",
     #{mode => profile, running => true}).
 ----

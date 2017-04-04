@@ -21,13 +21,13 @@ command:
 
 [source,erlang]
 ----
-1> lg_callgrind:profile_many("traces.gz.*", "callgrind.out",
+1> lg_callgrind:profile_many("traces.lz4.*", "callgrind.out",
     #{running => true}).
 ----
 
 This will create a callgrind.out file for all trace files
-you generated. For example if you had 'traces.gz.1' and
-'traces.gz.2', you should now also have 'callgrind.out.1'
+you generated. For example if you had 'traces.lz4.1' and
+'traces.lz4.2', you should now also have 'callgrind.out.1'
 and 'callgrind.out.2'.
 
 You can now open these two files in the cachegrind tool,
@@ -49,14 +49,14 @@ the output file name and an optional map of options:
 
 [source,erlang]
 ----
-1> lg_callgrind:profile("traces.gz.1", "callgrind.out.1").
+1> lg_callgrind:profile("traces.lz4.1", "callgrind.out.1").
 ----
 
 It also accepts options:
 
 [source,erlang]
 ----
-1> lg_callgrind:profile("traces.gz.1", "callgrind.out.1",
+1> lg_callgrind:profile("traces.lz4.1", "callgrind.out.1",
     #{running => true}).
 ----
 
@@ -69,7 +69,7 @@ prefix as second argument:
 
 [source,erlang]
 ----
-1> lg_callgrind:profile_many("traces.gz.*", "callgrind.out").
+1> lg_callgrind:profile_many("traces.lz4.*", "callgrind.out").
 ----
 
 If there were two trace files, this will result in two
@@ -79,7 +79,7 @@ It also accepts options:
 
 [source,erlang]
 ----
-1> lg_callgrind:profile_many("traces.gz.*", "callgrind.out",
+1> lg_callgrind:profile_many("traces.lz4.*", "callgrind.out",
     #{running => true}).
 ----
 
@@ -93,7 +93,7 @@ files:
 
 [source,erlang]
 ----
-1> lg_callgrind:profile_many("traces.gz.*", "callgrind.out",
+1> lg_callgrind:profile_many("traces.lz4.*", "callgrind.out",
     #{running => true}).
 ----
 
@@ -113,7 +113,7 @@ using the `scope` option:
 
 [source,erlang]
 ----
-1> lg_callgrind:profile_many("traces.gz.*", "callgrind.out",
+1> lg_callgrind:profile_many("traces.lz4.*", "callgrind.out",
     #{running => true}).
 ----
 

@@ -1,3 +1,4 @@
+// @todo Fix this copyright, it's incorrect.
 // Copyright (c) 2014-2015, Loïc Hoguin <essen@ninenines.eu>
 //
 // Permission to use, copy, modify, and/or distribute this software for any

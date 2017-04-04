@@ -24,7 +24,7 @@ start_link(Nth, Filename0) ->
 init(Parent, Filename) ->
     %% No need to close the file, it'll be closed when the process exits.
     %% @todo We probably want to use the raw option.
-    {ok, IoDevice} = file:open(Filename, [write, delayed_write]),
+    {ok, IoDevice} = file:open(Filename, [write, raw]),
     loop(#state{parent=Parent, filename=Filename, io_device=IoDevice}).
 
 loop(State=#state{parent=Parent, io_device=IoDevice,

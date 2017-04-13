@@ -22,14 +22,17 @@ start_link(Nth, Filename0) ->
     {ok, Pid}.
 
 init(Parent, Filename) ->
+    %% We need to trap exit signals in order to shutdown properly.
+    process_flag(trap_exit, true),
     %% No need to close the file, it'll be closed when the process exits.
-    %% @todo We probably want to use the raw option.
     {ok, IoDevice} = file:open(Filename, [write, raw]),
     loop(#state{parent=Parent, filename=Filename, io_device=IoDevice}).
 
 loop(State=#state{parent=Parent, io_device=IoDevice,
         events_per_frame=MaxEvents, events_this_frame=NumEvents0, buffer=Buffer0}) ->
     receive
+        {'EXIT', Parent, Reason} ->
+            terminate(Reason, State);
         {system, From, Request} ->
             sys:handle_system_msg(Request, From, Parent, ?MODULE, [], State);
         Msg ->
@@ -50,10 +53,12 @@ system_continue(_, _, State) ->
     loop(State).
 
 -spec system_terminate(any(), _, _, #state{}) -> no_return().
-system_terminate(Reason, _, _, #state{io_device=IoDevice, buffer=Buffer}) ->
-    %% @todo This doesn't seem to be executed.
-    _ = file:write(IoDevice, lz4f:compress_frame(Buffer)),
-    exit(Reason).
+system_terminate(Reason, _, _, State) ->
+    terminate(Reason, State).
 
 system_code_change(Misc, _, _, _) ->
     {ok, Misc}.
+
+terminate(Reason, #state{io_device=IoDevice, buffer=Buffer}) ->
+    _ = file:write(IoDevice, lz4f:compress_frame(Buffer)),
+    exit(Reason).

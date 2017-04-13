@@ -118,7 +118,7 @@ trace_input([{scope, Scope}|Tail], Opts, Running) ->
     trace_input(Tail, Opts, Running);
 trace_input([Mod|Tail], Opts, Running) when is_atom(Mod) ->
     %% The module must be loaded before we attempt to trace it.
-    _ = code:load_file(Mod),
+    _ = code:ensure_loaded(Mod),
     _ = erlang:trace_pattern({Mod, '_', '_'}, true, [local]),
     trace_input(Tail, Opts, Running).
 

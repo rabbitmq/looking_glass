@@ -2,6 +2,9 @@
 .looking_glass.plt
 c_src/env.mk
 c_src/*.o
+deps/
 ebin/
+logs/
 looking_glass.d
 priv/lg_tracer.so
+test/*.beam

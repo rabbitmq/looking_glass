@@ -9,4 +9,9 @@ LOCAL_DEPS = runtime_tools
 
 C_SRC_OUTPUT ?= $(CURDIR)/priv/lg_tracer
 
+TEST_DEPS = ct_helper
+dep_ct_helper = git https://github.com/extend/ct_helper master
+
 include erlang.mk
+
+# CT_OPTS += -boot start_sasl

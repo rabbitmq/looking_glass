@@ -59,6 +59,7 @@ system_terminate(Reason, _, _, State) ->
 system_code_change(Misc, _, _, _) ->
     {ok, Misc}.
 
+-spec terminate(any(), #state{}) -> no_return().
 terminate(Reason, #state{io_device=IoDevice, buffer=Buffer}) ->
     _ = file:write(IoDevice, lz4f:compress_frame(Buffer)),
     exit(Reason).

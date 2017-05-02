@@ -16,7 +16,7 @@
 
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 
-ERLANG_MK_VERSION = 2016.12.08-2-g1361da6
+ERLANG_MK_VERSION = 2017.04.25-6-g5922969
 
 # Make 3.81 and 3.82 are deprecated.
 
@@ -4098,7 +4098,7 @@ endif
 # Copyright (c) 2013-2016, Loïc Hoguin <essen@ninenines.eu>
 # This file is part of erlang.mk and subject to the terms of the ISC License.
 
-.PHONY: distclean-deps
+.PHONY: distclean-deps clean-tmp-deps.log
 
 # Configuration.
 
@@ -4123,6 +4123,7 @@ dep_repo = $(patsubst git://github.com/%,https://github.com/%, \
 	$(if $(dep_$(1)),$(word 2,$(dep_$(1))),$(pkg_$(1)_repo)))
 dep_commit = $(if $(dep_$(1)_commit),$(dep_$(1)_commit),$(if $(dep_$(1)),$(word 3,$(dep_$(1))),$(pkg_$(1)_commit)))
 
+LOCAL_DEPS_DIRS = $(foreach a,$(LOCAL_DEPS),$(if $(wildcard $(APPS_DIR)/$(a)),$(APPS_DIR)/$(a)))
 ALL_APPS_DIRS = $(if $(wildcard $(APPS_DIR)/),$(filter-out $(APPS_DIR),$(shell find $(APPS_DIR) -maxdepth 1 -type d)))
 ALL_DEPS_DIRS = $(addprefix $(DEPS_DIR)/,$(foreach dep,$(filter-out $(IGNORE_DEPS),$(BUILD_DEPS) $(DEPS)),$(call dep_name,$(dep))))
 
@@ -4145,10 +4146,7 @@ dep_verbose = $(dep_verbose_$(V))
 
 # Core targets.
 
-ifdef IS_APP
-apps::
-else
-apps:: $(ALL_APPS_DIRS)
+apps:: $(ALL_APPS_DIRS) clean-tmp-deps.log
 ifeq ($(IS_APP)$(IS_DEP),)
 	$(verbose) rm -f $(ERLANG_MK_TMP)/apps.log
 endif
@@ -4156,10 +4154,15 @@ endif
 # Create ebin directory for all apps to make sure Erlang recognizes them
 # as proper OTP applications when using -include_lib. This is a temporary
 # fix, a proper fix would be to compile apps/* in the right order.
+ifndef IS_APP
 	$(verbose) for dep in $(ALL_APPS_DIRS) ; do \
 		mkdir -p $$dep/ebin || exit $$?; \
 	done
-	$(verbose) for dep in $(ALL_APPS_DIRS) ; do \
+endif
+# at the toplevel: if LOCAL_DEPS is defined with at least one local app, only
+# compile that list of apps. otherwise, compile everything.
+# within an app: compile all LOCAL_DEPS that are (uncompiled) local apps
+	$(verbose) for dep in $(if $(LOCAL_DEPS_DIRS)$(IS_APP),$(LOCAL_DEPS_DIRS),$(ALL_APPS_DIRS)) ; do \
 		if grep -qs ^$$dep$$ $(ERLANG_MK_TMP)/apps.log; then \
 			:; \
 		else \
@@ -4167,18 +4170,16 @@ endif
 			$(MAKE) -C $$dep IS_APP=1 || exit $$?; \
 		fi \
 	done
+
+clean-tmp-deps.log:
+ifeq ($(IS_APP)$(IS_DEP),)
+	$(verbose) rm -f $(ERLANG_MK_TMP)/deps.log
 endif
 
 ifneq ($(SKIP_DEPS),)
 deps::
 else
-ifeq ($(ALL_DEPS_DIRS),)
-deps:: apps
-else
-deps:: $(ALL_DEPS_DIRS) apps
-ifeq ($(IS_APP)$(IS_DEP),)
-	$(verbose) rm -f $(ERLANG_MK_TMP)/deps.log
-endif
+deps:: $(ALL_DEPS_DIRS) apps clean-tmp-deps.log
 	$(verbose) mkdir -p $(ERLANG_MK_TMP)
 	$(verbose) for dep in $(ALL_DEPS_DIRS) ; do \
 		if grep -qs ^$$dep$$ $(ERLANG_MK_TMP)/deps.log; then \
@@ -4194,7 +4195,6 @@ endif
 		fi \
 	done
 endif
-endif
 
 # Deps related targets.
 
@@ -4207,7 +4207,9 @@ define dep_autopatch
 		$(call erlang,$(call dep_autopatch_appsrc.erl,$(1))); \
 		$(call dep_autopatch_erlang_mk,$(1)); \
 	elif [ -f $(DEPS_DIR)/$(1)/Makefile ]; then \
-		if [ 0 != `grep -c "include ../\w*\.mk" $(DEPS_DIR)/$(1)/Makefile` ]; then \
+		if [ -f $(DEPS_DIR)/$1/rebar.lock ]; then \
+			$(call dep_autopatch2,$1); \
+		elif [ 0 != `grep -c "include ../\w*\.mk" $(DEPS_DIR)/$(1)/Makefile` ]; then \
 			$(call dep_autopatch2,$(1)); \
 		elif [ 0 != `grep -ci "^[^#].*rebar" $(DEPS_DIR)/$(1)/Makefile` ]; then \
 			$(call dep_autopatch2,$(1)); \
@@ -4230,7 +4232,7 @@ define dep_autopatch2
 		$(call erlang,$(call dep_autopatch_appsrc_script.erl,$(1))); \
 	fi; \
 	$(call erlang,$(call dep_autopatch_appsrc.erl,$(1))); \
-	if [ -f $(DEPS_DIR)/$(1)/rebar -o -f $(DEPS_DIR)/$(1)/rebar.config -o -f $(DEPS_DIR)/$(1)/rebar.config.script ]; then \
+	if [ -f $(DEPS_DIR)/$(1)/rebar -o -f $(DEPS_DIR)/$(1)/rebar.config -o -f $(DEPS_DIR)/$(1)/rebar.config.script -o -f $(DEPS_DIR)/$1/rebar.lock ]; then \
 		$(call dep_autopatch_fetch_rebar); \
 		$(call dep_autopatch_rebar,$(1)); \
 	else \
@@ -4689,84 +4691,6 @@ ERLANG_MK_RECURSIVE_REL_DEPS_LIST = $(ERLANG_MK_TMP)/recursive-rel-deps-list.log
 ERLANG_MK_RECURSIVE_TEST_DEPS_LIST = $(ERLANG_MK_TMP)/recursive-test-deps-list.log
 ERLANG_MK_RECURSIVE_SHELL_DEPS_LIST = $(ERLANG_MK_TMP)/recursive-shell-deps-list.log
 
-# External plugins.
-
-DEP_PLUGINS ?=
-
-define core_dep_plugin
--include $(DEPS_DIR)/$(1)
-
-$(DEPS_DIR)/$(1): $(DEPS_DIR)/$(2) ;
-endef
-
-$(foreach p,$(DEP_PLUGINS),\
-	$(eval $(if $(findstring /,$p),\
-		$(call core_dep_plugin,$p,$(firstword $(subst /, ,$p))),\
-		$(call core_dep_plugin,$p/plugins.mk,$p))))
-
-# Copyright (c) 2013-2016, Loïc Hoguin <essen@ninenines.eu>
-# This file is part of erlang.mk and subject to the terms of the ISC License.
-
-# Configuration.
-
-DTL_FULL_PATH ?=
-DTL_PATH ?= templates/
-DTL_SUFFIX ?= _dtl
-DTL_OPTS ?=
-
-# Verbosity.
-
-dtl_verbose_0 = @echo " DTL   " $(filter %.dtl,$(?F));
-dtl_verbose = $(dtl_verbose_$(V))
-
-# Core targets.
-
-DTL_PATH := $(abspath $(DTL_PATH))
-DTL_FILES := $(sort $(call core_find,$(DTL_PATH),*.dtl))
-
-ifneq ($(DTL_FILES),)
-
-DTL_NAMES   = $(addsuffix $(DTL_SUFFIX),$(DTL_FILES:$(DTL_PATH)/%.dtl=%))
-DTL_MODULES = $(if $(DTL_FULL_PATH),$(subst /,_,$(DTL_NAMES)),$(notdir $(DTL_NAMES)))
-BEAM_FILES += $(addsuffix .beam,$(addprefix ebin/,$(DTL_MODULES)))
-
-ifneq ($(words $(DTL_FILES)),0)
-# Rebuild templates when the Makefile changes.
-$(ERLANG_MK_TMP)/last-makefile-change-erlydtl: $(MAKEFILE_LIST)
-	@mkdir -p $(ERLANG_MK_TMP)
-	@if test -f $@; then \
-		touch $(DTL_FILES); \
-	fi
-	@touch $@
-
-ebin/$(PROJECT).app:: $(ERLANG_MK_TMP)/last-makefile-change-erlydtl
-endif
-
-define erlydtl_compile.erl
-	[begin
-		Module0 = case "$(strip $(DTL_FULL_PATH))" of
-			"" ->
-				filename:basename(F, ".dtl");
-			_ ->
-				"$(DTL_PATH)/" ++ F2 = filename:rootname(F, ".dtl"),
-				re:replace(F2, "/",  "_",  [{return, list}, global])
-		end,
-		Module = list_to_atom(string:to_lower(Module0) ++ "$(DTL_SUFFIX)"),
-		case erlydtl:compile(F, Module, [$(DTL_OPTS)] ++ [{out_dir, "ebin/"}, return_errors]) of
-			ok -> ok;
-			{ok, _} -> ok
-		end
-	end || F <- string:tokens("$(1)", " ")],
-	halt().
-endef
-
-ebin/$(PROJECT).app:: $(DTL_FILES) | ebin/
-	$(if $(strip $?),\
-		$(dtl_verbose) $(call erlang,$(call erlydtl_compile.erl,$(call core_native_path,$?)),\
-			-pa ebin/ $(DEPS_DIR)/erlydtl/ebin/))
-
-endif
-
 # Copyright (c) 2015-2016, Loïc Hoguin <essen@ninenines.eu>
 # This file is part of erlang.mk and subject to the terms of the ISC License.
 
@@ -4812,6 +4736,8 @@ COMPILE_FIRST ?=
 COMPILE_FIRST_PATHS = $(addprefix src/,$(addsuffix .erl,$(COMPILE_FIRST)))
 ERLC_EXCLUDE ?=
 ERLC_EXCLUDE_PATHS = $(addprefix src/,$(addsuffix .erl,$(ERLC_EXCLUDE)))
+
+ERLC_ASN1_OPTS ?=
 
 ERLC_MIB_OPTS ?=
 COMPILE_MIB_FIRST ?=
@@ -4905,7 +4831,7 @@ ERL_FILES += $(addprefix src/,$(patsubst %.asn1,%.erl,$(notdir $(ASN1_FILES))))
 
 define compile_asn1
 	$(verbose) mkdir -p include/
-	$(asn1_verbose) erlc -v -I include/ -o asn1/ +noobj $(1)
+	$(asn1_verbose) erlc -v -I include/ -o asn1/ +noobj $(ERLC_ASN1_OPTS) $(1)
 	$(verbose) mv asn1/*.erl src/
 	$(verbose) mv asn1/*.hrl include/
 	$(verbose) mv asn1/*.asn1db include/
@@ -4987,7 +4913,12 @@ define makedep.erl
 		(F, Mod, include_lib, "$1/include/" ++ Hrl) -> AddHd(F, Mod, "include/" ++ Hrl);
 		(F, Mod, include_lib, Hrl) -> AddHd(F, Mod, "include/" ++ Hrl);
 		(F, Mod, import, {Imp, _}) ->
-			case filelib:is_file("src/" ++ atom_to_list(Imp) ++ ".erl") of
+			IsFile =
+				case lists:keyfind(Imp, 1, Modules) of
+					false -> false;
+					{_, FilePath} -> filelib:is_file(FilePath)
+				end,
+			case IsFile of
 				false -> ok;
 				true -> Add(Mod, Imp)
 			end;
@@ -5011,9 +4942,17 @@ define makedep.erl
 	end || F <- ErlFiles],
 	Depend = sofs:to_external(sofs:relation_to_family(sofs:relation(ets:tab2list(E)))),
 	CompileFirst = [X || X <- lists:reverse(digraph_utils:topsort(G)), [] =/= digraph:in_neighbours(G, X)],
+	TargetPath = fun(Target) ->
+		case lists:keyfind(Target, 1, Modules) of
+			false -> "";
+			{_, DepFile} ->
+				DirSubname = tl(string:tokens(filename:dirname(DepFile), "/")),
+				string:join(DirSubname ++ [atom_to_list(Target)], "/")
+		end
+	end,
 	ok = file:write_file("$(1)", [
 		[[F, "::", [[" ", D] || D <- Deps], "; @touch \$$@\n"] || {F, Deps} <- Depend],
-		"\nCOMPILE_FIRST +=", [[" ", atom_to_list(CF)] || CF <- CompileFirst], "\n"
+		"\nCOMPILE_FIRST +=", [[" ", TargetPath(CF)] || CF <- CompileFirst], "\n"
 	]),
 	halt()
 endef
@@ -5037,7 +4976,7 @@ $(ERL_FILES) $(CORE_FILES) $(ASN1_FILES) $(MIB_FILES) $(XRL_FILES) $(YRL_FILES):
 ebin/$(PROJECT).app:: $(ERLANG_MK_TMP)/last-makefile-change
 endif
 
--include $(PROJECT).d
+include $(wildcard $(PROJECT).d)
 
 ebin/$(PROJECT).app:: ebin/
 
@@ -5741,9 +5680,6 @@ endif
 ifndef t
 	$(error Usage: $(MAKE) new t=TEMPLATE n=NAME [in=APP])
 endif
-ifndef tpl_$(t)
-	$(error Unknown template)
-endif
 ifndef n
 	$(error Usage: $(MAKE) new t=TEMPLATE n=NAME [in=APP])
 endif
@@ -6262,6 +6198,69 @@ edoc: distclean-edoc doc-deps
 distclean-edoc:
 	$(gen_verbose) rm -f doc/*.css doc/*.html doc/*.png doc/edoc-info
 
+# Copyright (c) 2013-2016, Loïc Hoguin <essen@ninenines.eu>
+# This file is part of erlang.mk and subject to the terms of the ISC License.
+
+# Configuration.
+
+DTL_FULL_PATH ?=
+DTL_PATH ?= templates/
+DTL_SUFFIX ?= _dtl
+DTL_OPTS ?=
+
+# Verbosity.
+
+dtl_verbose_0 = @echo " DTL   " $(filter %.dtl,$(?F));
+dtl_verbose = $(dtl_verbose_$(V))
+
+# Core targets.
+
+DTL_PATH := $(abspath $(DTL_PATH))
+DTL_FILES := $(sort $(call core_find,$(DTL_PATH),*.dtl))
+
+ifneq ($(DTL_FILES),)
+
+DTL_NAMES   = $(addsuffix $(DTL_SUFFIX),$(DTL_FILES:$(DTL_PATH)/%.dtl=%))
+DTL_MODULES = $(if $(DTL_FULL_PATH),$(subst /,_,$(DTL_NAMES)),$(notdir $(DTL_NAMES)))
+BEAM_FILES += $(addsuffix .beam,$(addprefix ebin/,$(DTL_MODULES)))
+
+ifneq ($(words $(DTL_FILES)),0)
+# Rebuild templates when the Makefile changes.
+$(ERLANG_MK_TMP)/last-makefile-change-erlydtl: $(MAKEFILE_LIST)
+	@mkdir -p $(ERLANG_MK_TMP)
+	@if test -f $@; then \
+		touch $(DTL_FILES); \
+	fi
+	@touch $@
+
+ebin/$(PROJECT).app:: $(ERLANG_MK_TMP)/last-makefile-change-erlydtl
+endif
+
+define erlydtl_compile.erl
+	[begin
+		Module0 = case "$(strip $(DTL_FULL_PATH))" of
+			"" ->
+				filename:basename(F, ".dtl");
+			_ ->
+				"$(DTL_PATH)/" ++ F2 = filename:rootname(F, ".dtl"),
+				re:replace(F2, "/",  "_",  [{return, list}, global])
+		end,
+		Module = list_to_atom(string:to_lower(Module0) ++ "$(DTL_SUFFIX)"),
+		case erlydtl:compile(F, Module, [$(DTL_OPTS)] ++ [{out_dir, "ebin/"}, return_errors]) of
+			ok -> ok;
+			{ok, _} -> ok
+		end
+	end || F <- string:tokens("$(1)", " ")],
+	halt().
+endef
+
+ebin/$(PROJECT).app:: $(DTL_FILES) | ebin/
+	$(if $(strip $?),\
+		$(dtl_verbose) $(call erlang,$(call erlydtl_compile.erl,$(call core_native_path,$?)),\
+			-pa ebin/ $(DEPS_DIR)/erlydtl/ebin/))
+
+endif
+
 # Copyright (c) 2016, Loïc Hoguin <essen@ninenines.eu>
 # Copyright (c) 2014, Dave Cottlehuber <dch@skunkwerks.at>
 # This file is part of erlang.mk and subject to the terms of the ISC License.
@@ -6376,7 +6375,9 @@ eunit: test-build $(if $(IS_APP),,apps-eunit)
 
 ifneq ($(ALL_APPS_DIRS),)
 apps-eunit:
-	$(verbose) for app in $(ALL_APPS_DIRS); do $(MAKE) -C $$app eunit IS_APP=1; done
+	$(verbose) eunit_retcode=0 ; for app in $(ALL_APPS_DIRS); do $(MAKE) -C $$app eunit IS_APP=1; \
+		[ $$? -ne 0 ] && eunit_retcode=1 ; done ; \
+		exit $$eunit_retcode
 endif
 endif
 
@@ -6393,6 +6394,11 @@ RELX_CONFIG ?= $(CURDIR)/relx.config
 RELX_URL ?= https://github.com/erlware/relx/releases/download/v3.19.0/relx
 RELX_OPTS ?=
 RELX_OUTPUT_DIR ?= _rel
+RELX_TAR ?= 1
+
+ifdef SFX
+	RELX_TAR = 1
+endif
 
 ifeq ($(firstword $(RELX_OPTS)),-o)
 	RELX_OUTPUT_DIR = $(word 2,$(RELX_OPTS))
@@ -6419,10 +6425,10 @@ $(RELX):
 	$(verbose) chmod +x $(RELX)
 
 relx-rel: $(RELX) rel-deps app
-	$(verbose) $(RELX) -c $(RELX_CONFIG) $(RELX_OPTS) release tar
+	$(verbose) $(RELX) -c $(RELX_CONFIG) $(RELX_OPTS) release $(if $(filter 1,$(RELX_TAR)),tar)
 
 relx-relup: $(RELX) rel-deps app
-	$(verbose) $(RELX) -c $(RELX_CONFIG) $(RELX_OPTS) release relup tar
+	$(verbose) $(RELX) -c $(RELX_CONFIG) $(RELX_OPTS) release relup $(if $(filter 1,$(RELX_TAR)),tar)
 
 distclean-relx-rel:
 	$(gen_verbose) rm -rf $(RELX_OUTPUT_DIR)
@@ -6434,8 +6440,14 @@ run:
 else
 
 define get_relx_release.erl
-	{ok, Config} = file:consult("$(RELX_CONFIG)"),
-	{release, {Name, Vsn}, _} = lists:keyfind(release, 1, Config),
+	{ok, Config} = file:consult("$(call core_native_path,$(RELX_CONFIG))"),
+	{release, {Name, Vsn0}, _} = lists:keyfind(release, 1, Config),
+	Vsn = case Vsn0 of
+		{cmd, Cmd} -> os:cmd(Cmd);
+		semver -> "";
+		{semver, _} -> "";
+		VsnStr -> Vsn0
+	end,
 	io:format("~s ~s", [Name, Vsn]),
 	halt(0).
 endef
@@ -6484,6 +6496,20 @@ build-shell-deps: $(ALL_SHELL_DEPS_DIRS)
 
 shell: build-shell-deps
 	$(gen_verbose) $(SHELL_ERL) -pa $(SHELL_PATHS) $(SHELL_OPTS)
+
+# Copyright (c) 2017, Jean-Sébastien Pédron <jean-sebastien@rabbitmq.com>
+# This file is contributed to erlang.mk and subject to the terms of the ISC License.
+
+.PHONY: show-ERL_LIBS show-ERLC_OPTS show-TEST_ERLC_OPTS
+
+show-ERL_LIBS:
+	@echo $(ERL_LIBS)
+
+show-ERLC_OPTS:
+	@$(foreach opt,$(ERLC_OPTS) -pa ebin -I include,echo "$(opt)";)
+
+show-TEST_ERLC_OPTS:
+	@$(foreach opt,$(TEST_ERLC_OPTS) -pa ebin -I include,echo "$(opt)";)
 
 # Copyright (c) 2015-2016, Loïc Hoguin <essen@ninenines.eu>
 # This file is part of erlang.mk and subject to the terms of the ISC License.
@@ -6737,6 +6763,24 @@ sfx:
 
 endif
 endif
+
+# Copyright (c) 2013-2017, Loïc Hoguin <essen@ninenines.eu>
+# This file is part of erlang.mk and subject to the terms of the ISC License.
+
+# External plugins.
+
+DEP_PLUGINS ?=
+
+define core_dep_plugin
+-include $(DEPS_DIR)/$(1)
+
+$(DEPS_DIR)/$(1): $(DEPS_DIR)/$(2) ;
+endef
+
+$(foreach p,$(DEP_PLUGINS),\
+	$(eval $(if $(findstring /,$p),\
+		$(call core_dep_plugin,$p,$(firstword $(subst /, ,$p))),\
+		$(call core_dep_plugin,$p/plugins.mk,$p))))
 
 # Copyright (c) 2013-2015, Loïc Hoguin <essen@ninenines.eu>
 # Copyright (c) 2015-2016, Jean-Sébastien Pédron <jean-sebastien@rabbitmq.com>

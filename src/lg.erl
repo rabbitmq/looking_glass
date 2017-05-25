@@ -1,9 +1,5 @@
 -module(lg).
 
-%% @todo Check https://github.com/erlang/otp/pull/1328
-%% which has a tip for making processes with big mailboxes
-%% more efficient by avoiding copies on GC.
-
 %% @todo Tracer that listens for one incoming connection and pushes everything through.
 
 -export([trace/1]).

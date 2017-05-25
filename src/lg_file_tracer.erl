@@ -22,6 +22,8 @@ start_link(Nth, Filename0) ->
     {ok, Pid}.
 
 init(Parent, Filename) ->
+    %% Store all messages off the heap to avoid unnecessary GC.
+    process_flag(message_queue_data, off_heap),
     %% We need to trap exit signals in order to shutdown properly.
     process_flag(trap_exit, true),
     %% No need to close the file, it'll be closed when the process exits.

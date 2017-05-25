@@ -197,10 +197,6 @@ NIF_FUNCTION(trace)
     if (!enif_get_local_pid(env, head, &tracer))
         return atom_ok;
 
-    // @todo Do we ever reach this?
-    if (!enif_is_process_alive(env, &tracer))
-        printf("dead\n");
-
     // Everything good. Generate a timestamp to include in the message.
     //
     // @todo While this function is deprecated, the erl_tracer_nif.c

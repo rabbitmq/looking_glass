@@ -171,12 +171,9 @@ NIF_FUNCTION(enabled_running_procs)
 
 NIF_FUNCTION(trace)
 {
-    ERL_NIF_TERM tracers, head, now, ts, extra, msg;
-    const ERL_NIF_TERM *array;
+    ERL_NIF_TERM tracers, head, ts, extra, msg;
     ErlNifPid tracer;
-    unsigned int len, nth, i, megasec, sec, microsec;
-    ErlNifUInt64 ts64;
-    int arity;
+    unsigned int len, nth, i;
 
     if (!enif_get_map_value(env, argv[1], atom_tracers, &tracers))
         return atom_ok;
@@ -212,31 +209,9 @@ NIF_FUNCTION(trace)
         return atom_ok;
 
     // Everything good. Generate a timestamp to include in the message.
-    //
-    // @todo While this function is deprecated, the erl_tracer_nif.c
-    // coming with OTP currently uses it when the 'timestamp' option is used.
 
-    now = enif_now_time(env);
-
-    if (!enif_get_tuple(env, now, &arity, &array))
-        return atom_ok;
-
-    if (!enif_get_uint(env, array[0], &megasec))
-        return atom_ok;
-
-    if (!enif_get_uint(env, array[1], &sec))
-        return atom_ok;
-
-    if (!enif_get_uint(env, array[2], &microsec))
-        return atom_ok;
-
-    ts64 = megasec;
-    ts64 *= 1000000;
-    ts64 += sec;
-    ts64 *= 1000000;
-    ts64 += microsec;
-
-    ts = enif_make_uint64(env, ts64);
+    ts = enif_make_int64(env,
+        enif_monotonic_time(ERL_NIF_USEC) + enif_time_offset(ERL_NIF_USEC));
 
     // Build the message. There can be two different messages
     // depending on whether the extra option was set:

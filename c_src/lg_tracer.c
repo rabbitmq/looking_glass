@@ -75,6 +75,9 @@ NIF_ATOMS(NIF_ATOM_DECL)
 
 #define NIF_FUNCTIONS(F) \
     F(enabled, 3) \
+    F(enabled_call, 3) \
+    F(enabled_procs, 3) \
+    F(enabled_running_procs, 3) \
     F(trace, 5)
 
 NIF_FUNCTIONS(NIF_FUNCTION_H_DECL)
@@ -103,27 +106,21 @@ void unload(ErlNifEnv* env, void* priv_data)
 
 // enabled(TraceTag, TracerState, Tracee)
 
-// TracerState :: #{
-//   tracers := [pid()]
-// }
-
-#include <stdio.h>
-
 NIF_FUNCTION(enabled)
 {
-    ERL_NIF_TERM mode, tracers, head;
+    ERL_NIF_TERM tracers, head;
     ErlNifPid tracer;
 
-    int is_trace_status = enif_is_identical(atom_trace_status, argv[0]);
-    ERL_NIF_TERM on_error = is_trace_status ? atom_remove : atom_discard;
+    // This function will only be called for trace_status.
+    // We can take a few shortcuts knowing this.
 
     // Disable the trace when the tracers option is missing.
     if (!enif_get_map_value(env, argv[1], atom_tracers, &tracers))
-        return on_error;
+        return atom_remove;
 
     // Disable the trace when the tracers option is not a list.
     if (!enif_is_list(env, tracers))
-        return on_error;
+        return atom_remove;
 
     while (enif_get_list_cell(env, tracers, &head, &tracers)) {
         // Don't generate trace events for tracers.
@@ -132,30 +129,41 @@ NIF_FUNCTION(enabled)
 
         // Disable the trace when one of the tracers is not a local process.
         if (!enif_get_local_pid(env, head, &tracer))
-            return on_error;
+            return atom_remove;
 
         // Disable the trace when one of the tracers is not alive.
         if (!enif_is_process_alive(env, &tracer))
-            return on_error;
+            return atom_remove;
     }
 
     // @todo Discard trace events for a percent of processes.
 
-    // Discard events we don't need when the tracer mode is 'profile'.
-    // The default is to leave all events that were enabled by Erlang.
-    if (enif_get_map_value(env, argv[1], atom_mode, &mode)) {
-        if (enif_is_identical(atom_profile, mode)) {
-            if (!(
-                enif_is_identical(atom_call, argv[0]) ||
-                enif_is_identical(atom_return_to, argv[0]) ||
-                enif_is_identical(atom_exit, argv[0]) ||
-                enif_is_identical(atom_in, argv[0]) ||
-                enif_is_identical(atom_out, argv[0]) ||
-                enif_is_identical(atom_trace_status, argv[0])))
-                return on_error;
-        }
+    return atom_trace;
+}
+
+NIF_FUNCTION(enabled_call)
+{
+    // We always want both call and return_to.
+    return atom_trace;
+}
+
+NIF_FUNCTION(enabled_procs)
+{
+    ERL_NIF_TERM mode;
+
+    // We only want the exit event when 'profile' mode is enabled.
+    if (enif_get_map_value(env, argv[1], atom_mode, &mode)
+        && enif_is_identical(atom_profile, mode)
+        && enif_is_identical(atom_exit, argv[0])) {
+        return atom_trace;
     }
 
+    return atom_discard;
+}
+
+NIF_FUNCTION(enabled_running_procs)
+{
+    // We always want both in and out.
     return atom_trace;
 }
 

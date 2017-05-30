@@ -2,6 +2,9 @@
 %-behavior(erl_tracer).
 
 -export([enabled/3]).
+-export([enabled_call/3]).
+-export([enabled_procs/3]).
+-export([enabled_running_procs/3]).
 -export([trace/5]).
 
 -on_load(on_load/0).
@@ -14,6 +17,15 @@ on_load() ->
     end.
 
 enabled(_, _, _) ->
+    erlang:nif_error({not_loaded, ?MODULE}).
+
+enabled_call(_, _, _) ->
+    erlang:nif_error({not_loaded, ?MODULE}).
+
+enabled_procs(_, _, _) ->
+    erlang:nif_error({not_loaded, ?MODULE}).
+
+enabled_running_procs(_, _, _) ->
     erlang:nif_error({not_loaded, ?MODULE}).
 
 trace(_, _, _, _, _) ->

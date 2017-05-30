@@ -173,13 +173,10 @@ NIF_FUNCTION(trace)
 {
     ERL_NIF_TERM tracers, head, now, ts, extra, msg;
     const ERL_NIF_TERM *array;
-    ErlNifPid tracer, tracee;
+    ErlNifPid tracer;
     unsigned int len, nth, i, megasec, sec, microsec;
     ErlNifUInt64 ts64;
     int arity;
-
-    if (!enif_get_local_pid(env, argv[2], &tracee))
-        return atom_ok;
 
     if (!enif_get_map_value(env, argv[1], atom_tracers, &tracers))
         return atom_ok;
@@ -187,6 +184,9 @@ NIF_FUNCTION(trace)
     if (!enif_get_list_length(env, tracers, &len))
         return atom_ok;
 
+#if (ERL_NIF_MAJOR_VERSION >= 2) && (ERL_NIF_MINOR_VERSION >= 12)
+    nth = enif_hash(ERL_NIF_INTERNAL_HASH, argv[2], 0) % len;
+#else
     // Select the correct tracer for this process.
     //
     // The pid value is detailed in:
@@ -195,7 +195,13 @@ NIF_FUNCTION(trace)
     // As can be seen there, the first four bits of the pid value
     // are always the same. We therefore shift them out.
 
+    ErlNifPid tracee;
+
+    if (!enif_get_local_pid(env, argv[2], &tracee))
+        return atom_ok;
+
     nth = (tracee.pid >> 4) % len;
+#endif
 
     for (i = 0; i <= nth; i++) {
         if (!enif_get_list_cell(env, tracers, &head, &tracers))

@@ -1,0 +1,31 @@
+= Looking Glass
+
+Looking Glass is a tracer and profiler for Erlang/OTP.
+
+== Goals
+
+Looking Glass is the next generation profiling tool. It
+is implemented as an `erl_tracer` NIF and thus requires
+Erlang/OTP 19.0 or above.
+
+Looking Glass aims to provide a very efficient tool
+usable both in development and production settings,
+and capable of running for a very long amount of time
+even on busy systems.
+
+== Online documentation
+
+* link:/doc/src/guide/book.asciidoc[User guide]
+
+== Offline documentation
+
+* While still online, run `make docs`
+* User guide available in `doc/` in PDF and HTML formats
+* Function reference man pages available in `doc/man3/` and `doc/man7/`
+* Run `make install-docs` to install man pages on your system
+* Full documentation in Asciidoc available in `doc/src/`
+* Examples available in `examples/`
+
+== Getting help
+
+* https://github.com/rabbitmq/looking-glass/issues[Issues tracker]

@@ -107,7 +107,7 @@ void unload(ErlNifEnv* env, void* priv_data)
 
 NIF_FUNCTION(enabled)
 {
-    ERL_NIF_TERM tracers, head;
+    ERL_NIF_TERM tracers, value;
     ErlNifPid tracer;
 
     // This function will only be called for trace_status.
@@ -117,27 +117,22 @@ NIF_FUNCTION(enabled)
     if (!enif_get_map_value(env, argv[1], atom_tracers, &tracers))
         return atom_remove;
 
-    // Disable the trace when the tracers option is not a list.
-    if (!enif_is_list(env, tracers))
+    // Because the tracers supervisor is a one_for_all, we only need
+    // to check one of the tracer processes to confirm all are alive.
+
+    // We know for a fact that this key exists because
+    // there's at least one tracer process.
+    enif_get_map_value(env, tracers, enif_make_int(env, 0), &value);
+
+    // Disable the trace when one of the tracers is not a local process.
+    if (!enif_get_local_pid(env, value, &tracer))
         return atom_remove;
 
-    while (enif_get_list_cell(env, tracers, &head, &tracers)) {
-        // Don't generate trace events for tracers.
-        if (enif_is_identical(argv[2], head))
-            return atom_discard;
+    // Disable the trace when one of the tracers is not alive.
+    if (!enif_is_process_alive(env, &tracer))
+        return atom_remove;
 
-        // Disable the trace when one of the tracers is not a local process.
-        if (!enif_get_local_pid(env, head, &tracer))
-            return atom_remove;
-
-        // Disable the trace when one of the tracers is not alive.
-        if (!enif_is_process_alive(env, &tracer))
-            return atom_remove;
-    }
-
-    // @todo Discard trace events for a percent of processes.
-
-    return atom_trace;
+    return atom_discard;
 }
 
 NIF_FUNCTION(enabled_call)
@@ -172,13 +167,15 @@ NIF_FUNCTION(trace)
 {
     ERL_NIF_TERM tracers, head, ts, extra, msg;
     ErlNifPid tracer;
-    unsigned int len, nth, i;
+    unsigned int nth;
+    size_t len;
 
     if (!enif_get_map_value(env, argv[1], atom_tracers, &tracers))
         return atom_ok;
 
-    if (!enif_get_list_length(env, tracers, &len))
-        return atom_ok;
+    // We know for a fact that the argument is a map. And if not,
+    // no problem because we will return when trying to get a value from it.
+    enif_get_map_size(env, tracers, &len);
 
 #if (ERL_NIF_MAJOR_VERSION >= 2) && (ERL_NIF_MINOR_VERSION >= 12)
     nth = enif_hash(ERL_NIF_INTERNAL_HASH, argv[2], 0) % len;
@@ -199,10 +196,8 @@ NIF_FUNCTION(trace)
     nth = (tracee.pid >> 4) % len;
 #endif
 
-    for (i = 0; i <= nth; i++) {
-        if (!enif_get_list_cell(env, tracers, &head, &tracers))
-            return atom_ok;
-    }
+    if (!enif_get_map_value(env, tracers, enif_make_int(env, nth), &head))
+        return atom_ok;
 
     if (!enif_get_local_pid(env, head, &tracer))
         return atom_ok;

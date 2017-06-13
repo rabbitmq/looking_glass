@@ -66,6 +66,7 @@ do_trace(Input0, TracerMod, TracerOpts, Opts) ->
     %% Start the pool of tracer processes.
     PoolID = maps:get(pool_id, Opts, default),
     PoolSize = maps:get(pool_size, Opts, erlang:system_info(schedulers)),
+    true = PoolSize > 0,
     {ok, PoolPid} = supervisor:start_child(looking_glass_sup, #{
         id => PoolID,
         start => {lg_tracer_pool, start_link, [PoolSize, TracerMod, TracerOpts]},
@@ -73,12 +74,13 @@ do_trace(Input0, TracerMod, TracerOpts, Opts) ->
         type => supervisor
     }),
     Tracers = lg_tracer_pool:tracers(PoolPid),
+    TracersMap = maps:from_list(lists:zip(lists:seq(0, length(Tracers) - 1), Tracers)),
     Mode = maps:get(mode, Opts, trace),
     Running = maps:get(running, Opts, false),
     Input1 = flatten(Input0, []),
     Input2 = ensure_pattern(Input1),
     Input = ensure_scope(Input2),
-    trace_input(Input, #{mode => Mode, tracers => Tracers}, Running),
+    trace_input(Input, #{mode => Mode, tracers => TracersMap}, Running),
     ok.
 
 flatten([], Acc) ->

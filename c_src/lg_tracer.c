@@ -209,8 +209,7 @@ NIF_FUNCTION(trace)
 
     // Everything good. Generate a timestamp to include in the message.
 
-    ts = enif_make_int64(env,
-        enif_monotonic_time(ERL_NIF_USEC) + enif_time_offset(ERL_NIF_USEC));
+    ts = enif_make_int64(env, enif_monotonic_time(ERL_NIF_USEC));
 
     // Build the message. There can be two different messages
     // depending on whether the extra option was set:

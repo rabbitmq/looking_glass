@@ -35,7 +35,9 @@ loop(Parent) ->
     receive
         {system, From, Request} ->
             sys:handle_system_msg(Request, From, Parent, ?MODULE, [], Parent);
-        Msg ->
+        Msg0 ->
+            %% Convert the event's monotonic time to its system time.
+            Msg = setelement(3, Msg0, erlang:time_offset(microsecond) + element(3, Msg0)),
             erlang:display(Msg),
             loop(Parent)
     end.

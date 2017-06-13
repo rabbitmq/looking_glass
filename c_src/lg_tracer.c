@@ -153,11 +153,11 @@ NIF_FUNCTION(enabled_procs)
     // We only want the exit event when 'profile' mode is enabled.
     if (enif_get_map_value(env, argv[1], atom_mode, &mode)
         && enif_is_identical(atom_profile, mode)
-        && enif_is_identical(atom_exit, argv[0])) {
-        return atom_trace;
+        && !enif_is_identical(atom_exit, argv[0])) {
+        return atom_discard;
     }
 
-    return atom_discard;
+    return atom_trace;
 }
 
 NIF_FUNCTION(enabled_running_procs)

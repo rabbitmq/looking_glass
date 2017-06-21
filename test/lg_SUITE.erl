@@ -35,7 +35,7 @@ do_callback() ->
     [{scope, [self()]}, lists].
 
 file_tracer(Config) ->
-    doc("Save events to a files on disk."),
+    doc("Save events to files on disk."),
     lg:trace(lists, lg_file_tracer, config(priv_dir, Config) ++ "/file_tracer.lz4"),
     lists:seq(1,10),
     lg:stop(),
@@ -72,6 +72,53 @@ running_true(Config) ->
     lists:seq(1,10),
     lg:stop(),
     do_ensure_decompress(config(priv_dir, Config) ++ "/running_true.lz4").
+
+socket_tracer(Config) ->
+    doc("Send events to a socket."),
+    Port = 61234,
+    lg:trace(lists, lg_socket_tracer, Port, #{pool_size => 1}),
+    {ok, Socket} = gen_tcp:connect("localhost", Port,
+        [binary, {packet, 2}, {active, true}]),
+    lists:seq(1,10),
+    lg:stop(),
+    do_socket_tracer_recv(Socket).
+
+socket_tracer_many(Config) ->
+    doc("Send events to many sockets."),
+    Port = 61234,
+    lg:trace(lists, lg_socket_tracer, Port, #{pool_size => 5}),
+    {ok, _} = gen_tcp:connect("localhost", Port, []),
+    {ok, _} = gen_tcp:connect("localhost", Port + 1, []),
+    {ok, _} = gen_tcp:connect("localhost", Port + 2, []),
+    {ok, _} = gen_tcp:connect("localhost", Port + 3, []),
+    {ok, _} = gen_tcp:connect("localhost", Port + 4, []),
+    {error, _} = gen_tcp:connect("localhost", Port + 5, []),
+    lg:stop().
+
+socket_tracer_reconnect(Config) ->
+    doc("Confirm we can reconnect to the tracer."),
+    Port = 61234,
+    lg:trace(lists, lg_socket_tracer, Port, #{pool_size => 1}),
+    {ok, Socket0} = gen_tcp:connect("localhost", Port,
+        [binary, {packet, 2}, {active, true}]),
+    ok = gen_tcp:close(Socket0),
+    {ok, Socket} = gen_tcp:connect("localhost", Port,
+        [binary, {packet, 2}, {active, true}]),
+    lists:seq(1,10),
+    lg:stop(),
+    do_socket_tracer_recv(Socket).
+
+do_socket_tracer_recv(Socket) ->
+    receive
+        {tcp, Socket, Data} ->
+            Term = binary_to_term(Data),
+            true = is_tuple(Term),
+            do_socket_tracer_recv(Socket);
+        {tcp_closed, Socket} ->
+            ok
+    after 1000 ->
+        error(timeout)
+    end.
 
 stop_while_trace_is_running(Config) ->
     doc("Stop tracing while events are still coming in."),

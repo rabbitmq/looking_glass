@@ -33,7 +33,9 @@ Installation instructions depend on your system.
 On Arch Linux:
 
 [source,bash]
+----
 # pacman install lz4
+----
 
 On OSX with Homebrew:
 

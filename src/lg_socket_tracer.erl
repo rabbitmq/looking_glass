@@ -110,7 +110,7 @@ trace_loop(State=#state{parent=Parent, timeout_ref=TRef}, CSocket) ->
             trace_loop(State, CSocket);
         Msg ->
             Bin = term_to_binary(Msg),
-            BinSize = byte_size(Bin),
+            _ = byte_size(Bin),
             case erlang:port_command(CSocket, <<Bin/binary>>, [nosuspend]) of
                 true ->
                     trace_loop(State, CSocket);

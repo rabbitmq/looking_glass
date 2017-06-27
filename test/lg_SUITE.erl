@@ -83,6 +83,21 @@ socket_tracer(Config) ->
     lg:stop(),
     do_socket_tracer_recv(Socket).
 
+socket_tracer_client(Config) ->
+    doc("Send events to a socket client."),
+    Port = 61234,
+    lg:trace(lists, lg_socket_tracer, Port, #{pool_size => 1}),
+    BaseFilename = config(priv_dir, Config) ++ "/socket_tracer_client.lz4",
+    {ok, Pid} = lg_socket_client:start_link(Port, BaseFilename),
+    timer:sleep(1000),
+    lists:seq(1,10),
+    lg:stop(),
+    lg_socket_client:stop(Pid),
+    {ok, File} = file:read_file(BaseFilename ++ ".0"),
+    _ = lz4f:decompress(File),
+    true = filelib:file_size(BaseFilename ++ ".0") > 0,
+    ok.
+
 socket_tracer_many(Config) ->
     doc("Send events to many sockets."),
     Port = 61234,

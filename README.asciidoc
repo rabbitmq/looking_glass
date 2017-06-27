@@ -10,8 +10,18 @@ Erlang/OTP 19.0 or above.
 
 Looking Glass aims to provide a very efficient tool
 usable both in development and production settings,
-and capable of running for a very long amount of time
+and capable of running for a long amount of time
 even on busy systems.
+
+== Prerequisites
+
+Looking Glass uses LZ4 for trace data compression and thus requires
+LZ4 libraries to be installed.
+
+=== MacOS
+
+    brew install lz4
+
 
 == Online documentation
 
@@ -25,7 +35,3 @@ even on busy systems.
 * Run `make install-docs` to install man pages on your system
 * Full documentation in Asciidoc available in `doc/src/`
 * Examples available in `examples/`
-
-== Getting help
-
-* https://github.com/rabbitmq/looking-glass/issues[Issues tracker]

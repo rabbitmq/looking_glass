@@ -25,9 +25,27 @@ known as `kcachegrind`) is recommended. Note that
 it is a good idea to also install `graphviz` to
 have the quite informative call graphs.
 
+=== Requirements
+
+Looking Glass requires the LZ4 library to be installed.
+Installation instructions depend on your system.
+
+On Arch Linux:
+
+[source,bash]
+# pacman install lz4
+
+On OSX with Homebrew:
+
+[source,bash]
+$ brew install lz4
+
 === License
 
-TODO
+Looking Glass is double-licensed under the Mozilla
+Public License 1.1 and the Apache License version 2.
+
+See the LICENSE file for more information.
 
 === Versioning
 

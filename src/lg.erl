@@ -39,6 +39,7 @@
     mode => trace | profile,
     pool_id => any(),
     pool_size => pos_integer(),
+    send => boolean(),
     running => boolean()
 }.
 
@@ -76,11 +77,12 @@ do_trace(Input0, TracerMod, TracerOpts, Opts) ->
     Tracers = lg_tracer_pool:tracers(PoolPid),
     TracersMap = maps:from_list(lists:zip(lists:seq(0, length(Tracers) - 1), Tracers)),
     Mode = maps:get(mode, Opts, trace),
-    Running = maps:get(running, Opts, false),
+    ExtraFlags = [running || maps:get(running, Opts, false)]
+        ++ [send || maps:get(send, Opts, false)],
     Input1 = flatten(Input0, []),
     Input2 = ensure_pattern(Input1),
     Input = ensure_scope(Input2),
-    trace_input(Input, #{mode => Mode, tracers => TracersMap}, Running),
+    trace_input(Input, #{mode => Mode, tracers => TracersMap}, ExtraFlags),
     ok.
 
 flatten([], Acc) ->
@@ -109,7 +111,7 @@ ensure_scope(Input) ->
 
 trace_input([], _, _) ->
     ok;
-trace_input([{scope, Scope}|Tail], Opts, Running) ->
+trace_input([{scope, Scope}|Tail], Opts, ExtraFlags) ->
     %% We currently enable the following trace flags:
     %% - call: function calls
     %% - procs: process exit events; plus others we ignore
@@ -124,15 +126,15 @@ trace_input([{scope, Scope}|Tail], Opts, Running) ->
     _ = [erlang:trace(PidPortSpec, true, [
             call, procs, timestamp, arity, return_to, set_on_spawn,
             {tracer, lg_tracer, Opts}
-            |[running || Running]
+            |ExtraFlags
         ])
     || PidPortSpec <- Scope],
-    trace_input(Tail, Opts, Running);
-trace_input([Mod|Tail], Opts, Running) when is_atom(Mod) ->
+    trace_input(Tail, Opts, ExtraFlags);
+trace_input([Mod|Tail], Opts, ExtraFlags) when is_atom(Mod) ->
     %% The module must be loaded before we attempt to trace it.
     _ = code:ensure_loaded(Mod),
     _ = erlang:trace_pattern({Mod, '_', '_'}, true, [local]),
-    trace_input(Tail, Opts, Running).
+    trace_input(Tail, Opts, ExtraFlags).
 
 stop() ->
     stop(default).

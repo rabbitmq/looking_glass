@@ -66,12 +66,20 @@ raw_console_tracer(_) ->
     ct:print("Stop tracing to the console.").
 
 running_true(Config) ->
-    doc("Trace a specific module in with running option enabled."),
+    doc("Trace a specific module with running option enabled."),
     lg:trace(lists, lg_file_tracer, config(priv_dir, Config) ++ "/running_true.lz4",
         #{running => true}),
     lists:seq(1,10),
     lg:stop(),
     do_ensure_decompress(config(priv_dir, Config) ++ "/running_true.lz4").
+
+send_true(Config) ->
+    doc("Trace a specific module with send option enabled."),
+    lg:trace(lists, lg_file_tracer, config(priv_dir, Config) ++ "/send_true.lz4",
+        #{send => true}),
+    lists:seq(1,10),
+    lg:stop(),
+    do_ensure_decompress(config(priv_dir, Config) ++ "/send_true.lz4").
 
 socket_tracer(Config) ->
     doc("Send events to a socket."),

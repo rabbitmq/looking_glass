@@ -19,6 +19,7 @@
 -export([enabled_call/3]).
 -export([enabled_procs/3]).
 -export([enabled_running_procs/3]).
+-export([enabled_send/3]).
 -export([trace/5]).
 
 -on_load(on_load/0).
@@ -40,6 +41,9 @@ enabled_procs(_, _, _) ->
     erlang:nif_error({not_loaded, ?MODULE}).
 
 enabled_running_procs(_, _, _) ->
+    erlang:nif_error({not_loaded, ?MODULE}).
+
+enabled_send(_, _, _) ->
     erlang:nif_error({not_loaded, ?MODULE}).
 
 trace(_, _, _, _, _) ->

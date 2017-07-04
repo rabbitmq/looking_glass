@@ -77,6 +77,7 @@ NIF_ATOMS(NIF_ATOM_DECL)
     F(enabled_call, 3) \
     F(enabled_procs, 3) \
     F(enabled_running_procs, 3) \
+    F(enabled_send, 3) \
     F(trace, 5)
 
 NIF_FUNCTIONS(NIF_FUNCTION_H_DECL)
@@ -158,6 +159,12 @@ NIF_FUNCTION(enabled_procs)
 NIF_FUNCTION(enabled_running_procs)
 {
     // We always want both in and out.
+    return atom_trace;
+}
+
+NIF_FUNCTION(enabled_send)
+{
+    // We always want both send and send_to_non_existing_process.
     return atom_trace;
 }
 

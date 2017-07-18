@@ -76,8 +76,20 @@ running_true(Config) ->
 send_true(Config) ->
     doc("Trace a specific module with send option enabled."),
     lg:trace(lists, lg_file_tracer, config(priv_dir, Config) ++ "/send_true.lz4",
-        #{send => true}),
-    lists:seq(1,10),
+        #{pool_size => 1, send => true}),
+    Self = self(),
+    %% Send a message to and from an existing process.
+    Pid = spawn(fun() ->
+        receive {msg_from, Self} ->
+            Self ! {msg_from, self()}
+        end
+    end),
+    Pid ! {msg_from, Self},
+    receive {msg_from, Pid} -> ok end,
+    %% Also send a message to a non existing process.
+    DeadPid = spawn(fun() -> ok end),
+    receive after 100 -> ok end,
+    DeadPid ! {msg_from, Self},
     lg:stop(),
     do_ensure_decompress(config(priv_dir, Config) ++ "/send_true.lz4").
 

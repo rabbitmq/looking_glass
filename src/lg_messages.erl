@@ -66,6 +66,7 @@ flush(State) ->
     flush_most_active_pair_unidirectional(State),
     flush_most_active_pair_bidirectional(State),
     io:format("~n"),
+    flush_digraph(State),
     ok.
 
 flush_most_active_processes(State=#state{processes=Procs}) ->
@@ -141,6 +142,27 @@ flush_most_active_pair_bidirectional(#state{pairs=Procs0, last_msgs=Msgs}) ->
     || {{F, T}, C} <- List],
     ok.
 
+flush_digraph(#state{pairs=Procs0}) ->
+    Procs = maps:fold(fun group_pairs/3, #{}, Procs0),
+    List = maps:to_list(Procs),
+    file:write_file("digraph.gv", [
+        "digraph {\n"
+        "    concentrate=true;\n"
+        "    splines=ortho;\n"
+        "    edge [arrowhead=none, labelfontsize=12.0, minlen=3];\n"
+        "\n",
+        [io_lib:format("    \"~w\" -> \"~w\" [taillabel=~b, headlabel=~b];~n",
+            [F, T, FC, TC]) || {{F, T}, {FC, TC}} <- List],
+        "}\n"
+    ]),
+    io:format(
+        "The file digraph.gv was created. Use GraphViz to make a PNG.~n"
+        "$ dot -Tpng -O digraph.gv~n"
+        "~n"
+        "You can also edit the file to remove uninteresting processes.~n"
+        "One line in the file is equal to a connection between two processes.~n"),
+    ok.
+
 merge_pairs({From, To}, Count, Acc) ->
     Key = if
         From < To -> {From, To};
@@ -148,3 +170,12 @@ merge_pairs({From, To}, Count, Acc) ->
     end,
     AccCount = maps:get(Key, Acc, 0),
     Acc#{Key => AccCount + Count}.
+
+group_pairs({From, To}, Count, Acc) when From < To ->
+    Key = {From, To},
+    {_, AccCount} = maps:get(Key, Acc, {0, 0}),
+    Acc#{Key => {Count, AccCount}};
+group_pairs({From, To}, Count, Acc) ->
+    Key = {To, From},
+    {AccCount, _} = maps:get(Key, Acc, {0, 0}),
+    Acc#{Key => {AccCount, Count}}.

@@ -1,0 +1,52 @@
+[[messages]]
+== Messages profiling
+
+Looking Glass can also be used to profile Erlang processes
+based on the messages they send. It can help you detect
+which processes are the most busy and is able to generate
+graphs and sequence diagrams to help you debug complex
+issues.
+
+=== Enabling the tracing of messages
+
+By default Looking Glass will not include the messages
+in the trace files. It needs to be enabled through the
+xref:tracing_send[send option].
+
+The output from one tracing session can then be used
+for both callgrind and message profiling.
+
+=== Profiling one file
+
+You can profile one file by calling the function
+`lg_messages:profile/1`. It takes the trace file name
+and prints out the result of the profiling.
+
+[source,erlang]
+----
+1> lg_messages:profile("traces.lz4.1").
+----
+
+It will also create a GraphViz file currently hardcoded as
+'digraph.gv' and print further instructions to use it.
+
+=== Profiling many files
+
+A convenience function is available for profiling many
+files at once: `lg_callgrind:profile_many/2,3`. It takes
+a wildcard pattern as first argument and a file name
+prefix as second argument:
+
+You can profile many files by calling the function
+`lg_messages:profile_many/1`. It takes a wildcard pattern
+and prints out the result of the profiling. The result
+is a merge of the events in the different trace files.
+
+[source,erlang]
+----
+1> lg_messages:profile_many("traces.lz4.*").
+----
+
+=== Using the GraphViz file
+
+TODO

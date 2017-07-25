@@ -321,3 +321,19 @@ of resources and so isn't enabled by default:
 1> lg:trace('_', lg_file_tracer, "traces.lz4",
     #{mode => profile, running => true}).
 ----
+
+[[tracing_send]]
+You may want to also trace the messages sent by the processes.
+To do so you need to enable the `send` option. You can then
+xref:messages[obtain detailed information about the processes
+sending messages]. To enable the tracing of messages:
+
+[source,erlang]
+----
+1> lg:trace('_', lg_file_tracer, "traces.lz4",
+    #{send => true}).
+----
+
+All the options in this section can be combined at will. It is
+possible to use the data from the same tracing session when
+profiling both functions and messages.

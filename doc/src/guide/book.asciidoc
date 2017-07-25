@@ -5,3 +5,5 @@ include::introduction.asciidoc[Introduction]
 include::tracing.asciidoc[Tracing]
 
 include::callgrind.asciidoc[Callgrind profiling]
+
+include::messages.asciidoc[Messages profiling]

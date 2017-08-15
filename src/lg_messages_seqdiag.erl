@@ -64,22 +64,45 @@ hide_pid_node([$<, _, _, _, _, _, $.|Tail]) -> "<***." ++ Tail.
 flush(#state{events=Events0}) ->
     %% Sort by timestamp from oldest to newest.
     Events = lists:keysort(3, Events0),
+    %% Initialize the formatting state.
+    put(num_calls, 0),
+    %% Output everything.
     file:write_file("seq.diag", [
         "seqdiag {\n"
-        "    default_fontsize = 16;\n"
-        "\n"
+        "    edge_length = 300;\n"
         "    activation = none;\n"
         "\n",
-        [],
-        [io_lib:format("    \"~w\" ~s \"~w\" [label=\"~w\"];~n",
-            [From, case Type of send -> "->"; _ -> "-->" end, To, Msg])
-                || {Type, From, _, Msg, To} <- Events],
+        [format_event(Event) || Event <- Events],
         "}\n"
     ]),
     io:format(
         "The file seq.diag was created. Use seqdiag to make a PNG.~n"
-        "$ seqdiag -Tpng seq.diag~n"
+        "$ seqdiag -Tpng --no-transparency seq.diag~n"
+        "~n"
+        "To use a custom font, use the -f modifier:~n"
+        "$ seqdiag -Tpng --no-transparency -f /usr/share/fonts/TTF/verdana.ttf seq.diag~n"
         "~n"
         "You can also edit the file to remove uninteresting messages.~n"
         "One line in the file is equal to a message sent by a process to another.~n"),
     ok.
+
+format_event({Type, From, _, {'$gen_call', {From, Ref}, Msg}, To}) ->
+    NumCalls = get(num_calls) + 1,
+    put(num_calls, NumCalls),
+    put(Ref, NumCalls),
+    io_lib:format("    \"~w\" ~s \"~w\" [label=\"gen:call #~w ~9999P\"];~n",
+        [From, case Type of send -> "->"; _ -> "-->" end, To, NumCalls, Msg, 8]);
+format_event(Event={Type, From, _, {Ref, Msg}, To}) ->
+    case get(Ref) of
+        undefined ->
+            default_format_event(Event);
+        NumCall ->
+            io_lib:format("    \"~w\" ~s \"~w\" [label=\"#~w ~9999P\"];~n",
+                [From, case Type of send -> "->"; _ -> "-->" end, To, NumCall, Msg, 8])
+    end;
+format_event(Event) ->
+    default_format_event(Event).
+
+default_format_event({Type, From, _, Msg, To}) ->
+    io_lib:format("    \"~w\" ~s \"~w\" [label=\"~9999P\"];~n",
+        [From, case Type of send -> "->"; _ -> "-->" end, To, Msg, 8]).

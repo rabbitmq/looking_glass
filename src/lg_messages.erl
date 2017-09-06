@@ -18,7 +18,8 @@
 -export([profile_many/1]).
 
 -record(state, {
-    processes = #{} :: #{pid() => pos_integer()},
+    senders = #{} :: #{pid() => pos_integer()},
+    receivers = #{} :: #{pid() => pos_integer()},
     pairs = #{} :: #{{pid(), pid()} => pos_integer()},
     non_existing = #{} :: #{pid() => pos_integer()},
     last_msgs = #{} :: #{pid() => atom()}
@@ -41,11 +42,13 @@ profile_many(Wildcard) ->
 %% @todo Later we may want to look at the latency of gen_server call/reply.
 %% @todo Later we may want to look at particular messages, have some sort of callback.
 handle_event({send, From, _, Msg, To},
-        State=#state{processes=Procs, pairs=Pairs, last_msgs=Msgs}) ->
-    ProcsCount = maps:get(From, Procs, 0),
+        State=#state{senders=Senders, receivers=Receivers, pairs=Pairs, last_msgs=Msgs}) ->
+    SendersCount = maps:get(From, Senders, 0),
+    ReceiversCount = maps:get(To, Receivers, 0),
     PairsCount = maps:get({From, To}, Pairs, 0),
     State#state{
-        processes=Procs#{From => ProcsCount + 1},
+        senders=Senders#{From => SendersCount + 1},
+        receivers=Receivers#{To => ReceiversCount + 1},
         pairs=Pairs#{{From, To} => PairsCount + 1},
         last_msgs=Msgs#{From => Msg}};
 handle_event({send_to_non_existing_process, From, _, Msg, _},
@@ -61,7 +64,8 @@ handle_event(_, State) ->
 %% Output of the profiling.
 
 flush(State) ->
-    flush_most_active_processes(State),
+    flush_most_active_senders(State),
+    flush_most_active_receivers(State),
     flush_most_non_existing(State),
     flush_most_active_pair_unidirectional(State),
     flush_most_active_pair_bidirectional(State),
@@ -69,11 +73,17 @@ flush(State) ->
     flush_digraph(State),
     ok.
 
-flush_most_active_processes(State=#state{processes=Procs}) ->
+flush_most_active_senders(State=#state{senders=Procs}) ->
     List = lists:sublist(
         lists:reverse(lists:keysort(2, maps:to_list(Procs))),
         1, 100),
     format_by_count("They sent the most messages", List, State).
+
+flush_most_active_receivers(State=#state{receivers=Procs}) ->
+    List = lists:sublist(
+        lists:reverse(lists:keysort(2, maps:to_list(Procs))),
+        1, 100),
+    format_by_count("They received the most messages", List, State).
 
 flush_most_non_existing(State=#state{non_existing=Procs}) ->
     List = lists:sublist(
@@ -88,12 +98,12 @@ format_by_count(Title, List, #state{last_msgs=Msgs}) ->
     end,
     io:format(
         "~n~s~n~s~n~n"
-        "Process ID      Count      Most recent message~n"
-        "----------      -----      -------------------~n",
+        "Process ID      Count      Most recent message sent~n"
+        "----------      -----      ------------------------~n",
         [Title, lists:duplicate(length(Title), $=)]),
     _ = [
         io:format("~-15w ~-10b ~" ++ integer_to_list(MsgCols) ++ "P~n",
-            [P, C, maps:get(P, Msgs), 5])
+            [P, C, maps:get(P, Msgs, '<none>'), 5])
     || {P, C} <- List],
     ok.
 

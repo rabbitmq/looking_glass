@@ -39,9 +39,8 @@ profile_many(Wildcard, Pids) ->
 
 handle_event(Event = {Type, From0, _, _, To0}, State=#state{events=Events, pids=Pids})
         when Type =:= send; Type =:= send_to_non_existing_process ->
-    From = if is_pid(From0) -> hide_pid_node(pid_to_list(From0)); true -> From0 end,
-    To = if is_pid(To0) -> hide_pid_node(pid_to_list(To0)); true -> To0 end,
-    file:write_file("/tmp/log", io_lib:format("~p ~p ~p ~p~n", [From0, From, To0, To]), [append]),
+    From = hide_pid_node(From0),
+    To = hide_pid_node(To0),
     case {lists:member(From, Pids), lists:member(To, Pids)} of
         {true, true} ->
             State#state{events=[Event|Events]};
@@ -55,11 +54,13 @@ handle_event(_, State) ->
 prepare_pids(Pids) ->
     [hide_pid_node(Pid) || Pid <- Pids].
 
+hide_pid_node(Pid) when is_pid(Pid) -> hide_pid_node(pid_to_list(Pid));
 hide_pid_node([$<, _, $.|Tail]) -> "<***." ++ Tail;
 hide_pid_node([$<, _, _, $.|Tail]) -> "<***." ++ Tail;
 hide_pid_node([$<, _, _, _, $.|Tail]) -> "<***." ++ Tail;
 hide_pid_node([$<, _, _, _, _, $.|Tail]) -> "<***." ++ Tail;
-hide_pid_node([$<, _, _, _, _, _, $.|Tail]) -> "<***." ++ Tail.
+hide_pid_node([$<, _, _, _, _, _, $.|Tail]) -> "<***." ++ Tail;
+hide_pid_node(Name) -> Name.
 
 flush(#state{events=Events0}) ->
     %% Sort by timestamp from oldest to newest.

@@ -205,3 +205,50 @@ The project page is at http://blockdiag.com/en/seqdiag/
 
 .Example output
 image::seq.png[]
+
+=== Identifying processes
+
+While Looking Glass will display the pid and one sample message
+from each process, it's not always ideal to identify which process
+is which.
+
+To allievate that, Looking Glass offers a simple solution:
+sending a message to the named process `lg` while a tracer is
+running. Looking Glass will inevitably log this message in the
+trace file, recognize that the target is `lg` and use the
+message as metadata. This metadata is then available to any
+module reading from the trace file.
+
+The process is only available when Looking Glass is running,
+of course, which means we can't just send a message directly.
+The following works:
+
+[source,erlang]
+----
+is_pid(whereis(lg)) andalso (lg ! Info).
+----
+
+This can be made into a macro, of course:
+
+[source,erlang]
+----
+%% Store metadata in the trace files when message tracing is enabled.
+-define(LG_INFO(Info), is_pid(whereis(lg)) andalso (lg ! Info)).
+----
+
+And can then be used like this:
+
+[source,erlang]
+----
+?LG_INFO(#{process_type => reader}).
+----
+
+The message must always be a map. Reading the trace file
+will otherwise fail. Looking Glass only recognizes the
+`process_type` field, and uses it as a label to identify
+processes when profiling exchanges of messages. You are
+free to define any other value you need in the map.
+
+The metadata can also be updated by sending another message
+or by calling the macro a second time. The operation done
+on the map will be a merge by default.

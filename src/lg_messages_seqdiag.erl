@@ -18,6 +18,7 @@
 -export([profile_many/2]).
 
 -record(state, {
+    meta = #{} :: map(),
     events = [],
     pids
 }).
@@ -37,6 +38,12 @@ profile_many(Wildcard, Pids) ->
     end, #state{pids=prepare_pids(Pids)}, Files),
     flush(FinalState).
 
+handle_event({send, From, _, Info, lg}, State=#state{meta=Meta0}) ->
+    Meta = case Meta0 of
+        #{From := Info0} -> Meta0#{From => maps:merge(Info0, Info)};
+        _ -> Meta0#{From => Info}
+    end,
+    State#state{meta=Meta};
 handle_event(Event = {Type, From0, _, _, To0}, State=#state{events=Events, pids=Pids})
         when Type =:= send; Type =:= send_to_non_existing_process ->
     From = hide_pid_node(From0),
@@ -62,7 +69,7 @@ hide_pid_node([$<, _, _, _, _, $.|Tail]) -> "<***." ++ Tail;
 hide_pid_node([$<, _, _, _, _, _, $.|Tail]) -> "<***." ++ Tail;
 hide_pid_node(Name) -> Name.
 
-flush(#state{events=Events0}) ->
+flush(State=#state{events=Events0}) ->
     %% Sort by timestamp from oldest to newest.
     Events = lists:keysort(3, Events0),
     %% Initialize the formatting state.
@@ -73,7 +80,7 @@ flush(#state{events=Events0}) ->
         "    edge_length = 300;\n"
         "    activation = none;\n"
         "\n",
-        [format_event(Event) || Event <- Events],
+        [format_event(Event, State) || Event <- Events],
         "}\n"
     ]),
     io:format(
@@ -87,23 +94,35 @@ flush(#state{events=Events0}) ->
         "One line in the file is equal to a message sent by a process to another.~n"),
     ok.
 
-format_event({Type, From, _, {'$gen_call', {From, Ref}, Msg}, To}) ->
+format_event({Type, From, _, {'$gen_call', {From, Ref}, Msg}, To}, State) ->
     NumCalls = get(num_calls) + 1,
     put(num_calls, NumCalls),
     put(Ref, NumCalls),
-    io_lib:format("    \"~w\" ~s \"~w\" [label=\"gen:call #~w ~9999P\"];~n",
-        [From, case Type of send -> "->"; _ -> "-->" end, To, NumCalls, Msg, 8]);
-format_event(Event={Type, From, _, {Ref, Msg}, To}) ->
+    io_lib:format("    \"~w~s\" ~s \"~w~s\" [label=\"gen:call #~w ~9999P\"];~n", [
+        From, label(From, State),
+        case Type of send -> "->"; _ -> "-->" end,
+        To, label(To, State), NumCalls, Msg, 8]);
+format_event(Event={Type, From, _, {Ref, Msg}, To}, State) ->
     case get(Ref) of
         undefined ->
-            default_format_event(Event);
+            default_format_event(Event, State);
         NumCall ->
-            io_lib:format("    \"~w\" ~s \"~w\" [label=\"#~w ~9999P\"];~n",
-                [From, case Type of send -> "->"; _ -> "-->" end, To, NumCall, Msg, 8])
+            io_lib:format("    \"~w~s\" ~s \"~w~s\" [label=\"#~w ~9999P\"];~n", [
+                From, label(From, State),
+                case Type of send -> "->"; _ -> "-->" end,
+                To, label(To, State), NumCall, Msg, 8])
     end;
-format_event(Event) ->
-    default_format_event(Event).
+format_event(Event, State) ->
+    default_format_event(Event, State).
 
-default_format_event({Type, From, _, Msg, To}) ->
-    io_lib:format("    \"~w\" ~s \"~w\" [label=\"~9999P\"];~n",
-        [From, case Type of send -> "->"; _ -> "-->" end, To, Msg, 8]).
+default_format_event({Type, From, _, Msg, To}, State) ->
+    io_lib:format("    \"~w~s\" ~s \"~w~s\" [label=\"~9999P\"];~n", [
+        From, label(From, State),
+        case Type of send -> "->"; _ -> "-->" end,
+        To, label(To, State), Msg, 8]).
+
+label(P, #state{meta=Meta}) ->
+    case maps:get(P, Meta, #{}) of
+        #{process_type := PT} -> io_lib:format(" (~w)", [PT]);
+        _ -> ""
+    end.

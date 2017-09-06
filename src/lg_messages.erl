@@ -18,6 +18,7 @@
 -export([profile_many/1]).
 
 -record(state, {
+    meta = #{} :: map(),
     senders = #{} :: #{pid() => pos_integer()},
     receivers = #{} :: #{pid() => pos_integer()},
     pairs = #{} :: #{{pid(), pid()} => pos_integer()},
@@ -41,6 +42,12 @@ profile_many(Wildcard) ->
 
 %% @todo Later we may want to look at the latency of gen_server call/reply.
 %% @todo Later we may want to look at particular messages, have some sort of callback.
+handle_event({send, From, _, Info, lg}, State=#state{meta=Meta0}) ->
+    Meta = case Meta0 of
+        #{From := Info0} -> Meta0#{From => maps:merge(Info0, Info)};
+        _ -> Meta0#{From => Info}
+    end,
+    State#state{meta=Meta};
 handle_event({send, From, _, Msg, To},
         State=#state{senders=Senders, receivers=Receivers, pairs=Pairs, last_msgs=Msgs}) ->
     SendersCount = maps:get(From, Senders, 0),
@@ -91,23 +98,30 @@ flush_most_non_existing(State=#state{non_existing=Procs}) ->
         1, 100),
     format_by_count("They sent the most messages to dead processes", List, State).
 
-format_by_count(Title, List, #state{last_msgs=Msgs}) ->
+format_by_count(Title, List, State) ->
     MsgCols = case io:columns() of
         {ok, Cols} -> Cols;
         _ -> 80
     end,
     io:format(
         "~n~s~n~s~n~n"
-        "Process ID      Count      Most recent message sent~n"
-        "----------      -----      ------------------------~n",
+        "Process ID      Count      (Label) OR Message sent~n"
+        "----------      -----      -----------------------~n",
         [Title, lists:duplicate(length(Title), $=)]),
-    _ = [
-        io:format("~-15w ~-10b ~" ++ integer_to_list(MsgCols) ++ "P~n",
-            [P, C, maps:get(P, Msgs, '<none>'), 5])
-    || {P, C} <- List],
+    _ = [begin
+        {Prefix, Label, Suffix} = label_or_msg(P, State),
+        io:format("~-15w ~-10b ~s~" ++ integer_to_list(MsgCols) ++ "P~s~n",
+            [P, C, Prefix, Label, 5, Suffix])
+    end || {P, C} <- List],
     ok.
 
-flush_most_active_pair_unidirectional(#state{pairs=Procs, last_msgs=Msgs}) ->
+label_or_msg(P, #state{meta=Meta, last_msgs=Msgs}) ->
+    case maps:get(P, Meta, #{}) of
+        #{process_type := PT} -> {"(", PT, ")"};
+        _ -> {"", maps:get(P, Msgs, '<none>'), ""}
+    end.
+
+flush_most_active_pair_unidirectional(State=#state{pairs=Procs}) ->
     List = lists:sublist(
         lists:reverse(lists:keysort(2, maps:to_list(Procs))),
         1, 100),
@@ -118,16 +132,17 @@ flush_most_active_pair_unidirectional(#state{pairs=Procs, last_msgs=Msgs}) ->
     end,
     io:format(
         "~n~s~n~s~n~n"
-        "From pid        To pid          Count      Most recent message~n"
-        "--------        ------          -----      -------------------~n",
+        "From pid        To pid          Count      (Label) OR Message sent~n"
+        "--------        ------          -----      -----------------------~n",
         [Title, lists:duplicate(length(Title), $=)]),
-    _ = [
-        io:format("~-15w ~-15w ~-10b ~" ++ integer_to_list(MsgCols) ++ "P~n",
-            [F, T, C, maps:get(F, Msgs), 5])
-    || {{F, T}, C} <- List],
+    _ = [begin
+        {Prefix, Label, Suffix} = label_or_msg(F, State),
+        io:format("~-15w ~-15w ~-10b ~s~" ++ integer_to_list(MsgCols) ++ "P~s~n",
+            [F, T, C, Prefix, Label, 5, Suffix])
+    end || {{F, T}, C} <- List],
     ok.
 
-flush_most_active_pair_bidirectional(#state{pairs=Procs0, last_msgs=Msgs}) ->
+flush_most_active_pair_bidirectional(State=#state{pairs=Procs0}) ->
     Procs = maps:fold(fun merge_pairs/3, #{}, Procs0),
     List = lists:sublist(
         lists:reverse(lists:keysort(2, maps:to_list(Procs))),
@@ -139,20 +154,22 @@ flush_most_active_pair_bidirectional(#state{pairs=Procs0, last_msgs=Msgs}) ->
     end,
     io:format(
         "~n~s~n~s~n~n"
-        "Count      Pid 1           Most recent message~n"
-        "           Pid 2           from the corresponding process~n"
-        "-----      -----           ------------------------------~n",
+        "Count      Pid 1           (Label) OR Message sent~n"
+        "           Pid 2           by the corresponding process~n"
+        "-----      -----           ----------------------------~n",
         [Title, lists:duplicate(length(Title), $=)]),
-    _ = [
+    _ = [begin
+        {FPrefix, FLabel, FSuffix} = label_or_msg(F, State),
+        {TPrefix, TLabel, TSuffix} = label_or_msg(T, State),
         io:format(
-            "~-10b ~-15w ~" ++ integer_to_list(MsgCols) ++ "P~n"
-            "           ~-15w ~" ++ integer_to_list(MsgCols) ++ "P~n",
-            [C, F, maps:get(F, Msgs, '<none>'), 5,
-                T, maps:get(T, Msgs, '<none>'), 5])
-    || {{F, T}, C} <- List],
+            "~-10b ~-15w ~s~" ++ integer_to_list(MsgCols) ++ "P~s~n"
+            "           ~-15w ~s~" ++ integer_to_list(MsgCols) ++ "P~s~n",
+            [C, F, FPrefix, FLabel, 5, FSuffix,
+                T, TPrefix, TLabel, 5, TSuffix])
+    end || {{F, T}, C} <- List],
     ok.
 
-flush_digraph(#state{pairs=Procs0}) ->
+flush_digraph(State=#state{pairs=Procs0}) ->
     Procs = maps:fold(fun group_pairs/3, #{}, Procs0),
     List = maps:to_list(Procs),
     file:write_file("digraph.gv", [
@@ -161,8 +178,8 @@ flush_digraph(#state{pairs=Procs0}) ->
         "    splines=ortho;\n"
         "    edge [arrowhead=none, labelfontsize=12.0, minlen=3];\n"
         "\n",
-        [io_lib:format("    \"~w\" -> \"~w\" [taillabel=~b, headlabel=~b];~n",
-            [F, T, FC, TC]) || {{F, T}, {FC, TC}} <- List],
+        [io_lib:format("    \"~w~s\" -> \"~w~s\" [taillabel=~b, headlabel=~b];~n",
+            [F, label(F, State), T, label(T, State), FC, TC]) || {{F, T}, {FC, TC}} <- List],
         "}\n"
     ]),
     io:format(
@@ -172,6 +189,12 @@ flush_digraph(#state{pairs=Procs0}) ->
         "You can also edit the file to remove uninteresting processes.~n"
         "One line in the file is equal to a connection between two processes.~n"),
     ok.
+
+label(P, #state{meta=Meta}) ->
+    case maps:get(P, Meta, #{}) of
+        #{process_type := PT} -> io_lib:format(" (~w)", [PT]);
+        _ -> ""
+    end.
 
 merge_pairs({From, To}, Count, Acc) ->
     Key = if

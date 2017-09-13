@@ -25,6 +25,7 @@
 -export([open_file/3]).
 -export([process_events/3]).
 -export([close_file/3]).
+-export([code_change/4]).
 -export([terminate/3]).
 
 -record(state, {
@@ -105,6 +106,9 @@ do_close_file(#state{io_device=IoDevice, buffer=Buffer}) ->
     _ = file:write(IoDevice, lz4f:compress_frame(Buffer)),
     _ = file:close(IoDevice),
     ok.
+
+code_change(_OldVsn, OldState, OldData, _Extra) ->
+    {callback_mode(), OldState, OldData}.
 
 terminate(_, _, #state{io_device=undefined}) ->
     ok;

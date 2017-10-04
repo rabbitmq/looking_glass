@@ -76,7 +76,7 @@ running_true(Config) ->
 send_true(Config) ->
     doc("Trace a specific module with send option enabled."),
     lg:trace(lists, lg_file_tracer, config(priv_dir, Config) ++ "/send_true.lz4",
-        #{pool_size => 1, send => true}),
+        #{send => true}),
     Self = self(),
     %% Send a message to and from an existing process.
     Pid = spawn(fun() ->
@@ -93,7 +93,7 @@ send_true(Config) ->
     lg:stop(),
     do_ensure_decompress(config(priv_dir, Config) ++ "/send_true.lz4").
 
-socket_tracer(Config) ->
+socket_tracer(_) ->
     doc("Send events to a socket."),
     Port = 61234,
     lg:trace(lists, lg_socket_tracer, Port, #{pool_size => 1}),
@@ -118,7 +118,7 @@ socket_tracer_client(Config) ->
     true = filelib:file_size(BaseFilename ++ ".0") > 0,
     ok.
 
-socket_tracer_many(Config) ->
+socket_tracer_many(_) ->
     doc("Send events to many sockets."),
     Port = 61234,
     lg:trace(lists, lg_socket_tracer, Port, #{pool_size => 5}),
@@ -130,7 +130,7 @@ socket_tracer_many(Config) ->
     {error, _} = gen_tcp:connect("localhost", Port + 5, []),
     lg:stop().
 
-socket_tracer_reconnect(Config) ->
+socket_tracer_reconnect(_) ->
     doc("Confirm we can reconnect to the tracer."),
     Port = 61234,
     lg:trace(lists, lg_socket_tracer, Port, #{pool_size => 1}),

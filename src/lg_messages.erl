@@ -172,7 +172,7 @@ flush_most_active_pair_bidirectional(State=#state{pairs=Procs0}) ->
 flush_digraph(State=#state{pairs=Procs0}) ->
     Procs = maps:fold(fun group_pairs/3, #{}, Procs0),
     List = maps:to_list(Procs),
-    file:write_file("digraph.gv", [
+    ok = file:write_file("digraph.gv", [
         "digraph {\n"
         "    concentrate=true;\n"
         "    splines=ortho;\n"

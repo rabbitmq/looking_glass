@@ -75,7 +75,7 @@ flush(State=#state{events=Events0}) ->
     %% Initialize the formatting state.
     put(num_calls, 0),
     %% Output everything.
-    file:write_file("seq.diag", [
+    ok = file:write_file("seq.diag", [
         "seqdiag {\n"
         "    edge_length = 300;\n"
         "    activation = none;\n"

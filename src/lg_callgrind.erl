@@ -108,9 +108,19 @@ profile_many(Wildcard, Prefix, Opts) ->
     Seq = lists:seq(1, length(Files)),
     OutFiles = [Prefix ++ "." ++ integer_to_list(N) || N <- Seq],
     Many = lists:zip(Files, OutFiles),
-    %% @todo Do it in parallel.
-    _ = [profile(Input, Output, Opts) || {Input, Output} <- Many],
-    ok.
+    Refs = [monitor(process, spawn_link(?MODULE, profile, [Input, Output, Opts]))
+        || {Input, Output} <- Many],
+    wait_for_procs(Refs).
+
+%% We do not need to worry about failure because we are linked.
+wait_for_procs([]) ->
+    ok;
+wait_for_procs(Refs) ->
+    receive
+        %% We purposefully ignore any stray messages.
+        {'DOWN', R, process, _, _} ->
+            wait_for_procs(Refs -- [R])
+    end.
 
 %% We handle trace events one by one, keeping track of the
 %% execution stack for each process.

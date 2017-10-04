@@ -13,16 +13,6 @@ usable both in development and production settings,
 and capable of running for a long amount of time
 even on busy systems.
 
-== Prerequisites
-
-Looking Glass uses LZ4 for trace data compression and thus requires
-LZ4 libraries to be installed.
-
-=== MacOS
-
-    brew install lz4
-
-
 == Online documentation
 
 * link:/doc/src/guide/book.asciidoc[User guide]

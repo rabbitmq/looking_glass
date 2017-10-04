@@ -27,18 +27,8 @@ have the quite informative call graphs.
 
 === Requirements
 
-Looking Glass requires the LZ4 library to be installed.
-Installation instructions depend on your system.
-
-On Arch Linux:
-
-[source,bash]
-$ pacman install lz4
-
-On OSX with Homebrew:
-
-[source,bash]
-$ brew install lz4
+Looking Glass should work out of the box on any system
+with the standard build tools installed.
 
 === License
 

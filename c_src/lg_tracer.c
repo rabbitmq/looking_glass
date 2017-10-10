@@ -146,10 +146,13 @@ NIF_FUNCTION(enabled_procs)
 {
     ERL_NIF_TERM mode;
 
-    // We only want the exit event when 'profile' mode is enabled.
+    // We only want the spawn and exit events when 'profile' mode
+    // is enabled. Technically we only care about exits for callgrind,
+    // but spawn is cheap to keep and useful for message profilers.
     if (enif_get_map_value(env, argv[1], atom_mode, &mode)
         && enif_is_identical(atom_profile, mode)
-        && !enif_is_identical(atom_exit, argv[0])) {
+        && !(enif_is_identical(atom_spawn, argv[0])
+            || enif_is_identical(atom_exit, argv[0]))) {
         return atom_discard;
     }
 

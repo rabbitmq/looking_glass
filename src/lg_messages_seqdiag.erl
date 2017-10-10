@@ -44,19 +44,28 @@ handle_event({send, From, _, Info, lg}, State=#state{meta=Meta0}) ->
         _ -> Meta0#{From => Info}
     end,
     State#state{meta=Meta};
-handle_event(Event = {Type, From0, _, _, To0}, State=#state{events=Events, pids=Pids})
+handle_event(Event = {Type, From, _, _, To}, State)
         when Type =:= send; Type =:= send_to_non_existing_process ->
+    maybe_keep_event(Event, From, To, State);
+handle_event(Event = {spawn, From, _, To, _}, State) ->
+    maybe_keep_event(Event, From, To, State);
+handle_event(Event = {exit, Pid0, _, _}, State=#state{events=Events, pids=Pids}) ->
+    Pid = hide_pid_node(Pid0),
+    case lists:member(Pid, Pids) of
+        true -> State#state{events=[Event|Events]};
+        _ -> State
+    end;
+%% Ignore all other events. We only care about messages and spawns/exits.
+handle_event(_, State) ->
+    State.
+
+maybe_keep_event(Event, From0, To0, State=#state{events=Events, pids=Pids}) ->
     From = hide_pid_node(From0),
     To = hide_pid_node(To0),
     case {lists:member(From, Pids), lists:member(To, Pids)} of
-        {true, true} ->
-            State#state{events=[Event|Events]};
-        _ ->
-            State
-    end;
-%% Ignore all other events. We only care about messages.
-handle_event(_, State) ->
-    State.
+        {true, true} -> State#state{events=[Event|Events]};
+        _ -> State
+    end.
 
 prepare_pids(Pids) ->
     [hide_pid_node(Pid) || Pid <- Pids].
@@ -94,6 +103,13 @@ flush(State=#state{events=Events0}) ->
         "One line in the file is equal to a message sent by a process to another.~n"),
     ok.
 
+format_event({spawn, From, _, To, MFA}, State) ->
+    io_lib:format("    \"~w~s\" ->> \"~w~s\" [label=\"spawn ~9999P\"];~n", [
+        From, label(From, State), To, label(To, State), MFA, 8]);
+format_event({exit, Pid, _, Reason}, State) ->
+    PidLabel = label(Pid, State),
+    io_lib:format("    \"~w~s\" ->> \"~w~s\" [label=\"exit ~9999P\"];~n", [
+        Pid, PidLabel, Pid, PidLabel, Reason, 8]);
 format_event({Type, From, _, {'$gen_call', {From, Ref}, Msg}, To}, State) ->
     NumCalls = get(num_calls) + 1,
     put(num_calls, NumCalls),

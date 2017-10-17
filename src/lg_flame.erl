@@ -13,6 +13,7 @@
 %% info@rabbitmq.com.
 
 %% This module is based on eflame2. @todo
+%% @todo https://github.com/brendangregg/FlameGraph to generate SVG
 -module(lg_flame).
 
 -export([profile/2]).
@@ -36,8 +37,14 @@ profile_many(Wildcard, Output) ->
     InitialState = exp1_init(Output),
     Files = filelib:wildcard(Wildcard),
     FinalState = lists:foldl(fun(Input, State0) ->
-        {ok, State} = lg_file_reader:fold(fun handle_event/2, State0, Input),
-        State
+        case lg_file_reader:fold(fun handle_event/2, State0, Input) of
+            {ok, State} ->
+                State;
+            {error, Reason, HumanReadable} ->
+                io:format("Error ~p while reading ~s:~n~s~n",
+                    [Reason, Input, HumanReadable]),
+                State0
+        end
     end, InitialState, Files),
     flush(FinalState).
 
@@ -58,12 +65,12 @@ flush(#state{output_path=OutputPath}) ->
     io:format("finished!\n"),
     ok.
 
-handle_event({call, Pid, Ts, Arg}, State) ->
-    exp1({trace_ts, Pid, call, Arg, <<"todo">>, Ts}, State);
 handle_event({Type, Pid, Ts, Arg}, State) ->
     exp1({trace_ts, Pid, Type, Arg, Ts}, State);
-handle_event({Type, Pid, Ts, Arg, Extra}, State) ->
-    exp1({trace_ts, Pid, Type, Arg, Extra, Ts}, State).
+handle_event({Type, Pid, Ts, Arg, ExtraOrMspec}, State) ->
+    exp1({trace_ts, Pid, Type, Arg, ExtraOrMspec, Ts}, State);
+handle_event({Type, Pid, Ts, Arg, Extra, Mspec}, State) ->
+    exp1({trace_ts, Pid, Type, Arg, Extra, Mspec, Ts}, State).
 
 
 

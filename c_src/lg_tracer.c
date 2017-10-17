@@ -175,10 +175,11 @@ NIF_FUNCTION(enabled_send)
 
 NIF_FUNCTION(trace)
 {
-    ERL_NIF_TERM tracers, head, ts, extra, msg;
+    ERL_NIF_TERM tracers, head, ts, extra, mspec, msg;
     ErlNifPid tracer;
     unsigned int nth;
     size_t len;
+    int has_extra, has_mspec;
 
     if (!enif_get_map_value(env, argv[1], atom_tracers, &tracers))
         return atom_ok;
@@ -221,9 +222,23 @@ NIF_FUNCTION(trace)
     //
     // - {Tag, Tracee, Ts, Term}
     // - {Tag, Tracee, Ts, Term, Extra}
+    //
+    // On top of that when match specs are enabled we may have
+    // one additional term at the end of the tuple containing
+    // the result of the match spec function.
+    //
+    // - {Tag, Tracee, Ts, Term, Result}
+    // - {Tag, Tracee, Ts, Term, Extra, Result}
 
-    if (enif_get_map_value(env, argv[4], atom_extra, &extra))
+    has_extra = enif_get_map_value(env, argv[4], atom_extra, &extra);
+    has_mspec = enif_get_map_value(env, argv[4], atom_match_spec_result, &mspec);
+
+    if (has_extra && has_mspec)
+        msg = enif_make_tuple6(env, argv[0], argv[2], ts, argv[3], extra, mspec);
+    else if (has_extra)
         msg = enif_make_tuple5(env, argv[0], argv[2], ts, argv[3], extra);
+    else if (has_mspec)
+        msg = enif_make_tuple5(env, argv[0], argv[2], ts, argv[3], mspec);
     else
         msg = enif_make_tuple4(env, argv[0], argv[2], ts, argv[3]);
 

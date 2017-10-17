@@ -77,12 +77,10 @@ do_trace(Input0, TracerMod, TracerOpts, Opts) ->
     Tracers = lg_tracer_pool:tracers(PoolPid),
     TracersMap = maps:from_list(lists:zip(lists:seq(0, length(Tracers) - 1), Tracers)),
     Mode = maps:get(mode, Opts, trace),
-    ExtraFlags = [running || maps:get(running, Opts, false)]
-        ++ [send || maps:get(send, Opts, false)],
     Input1 = flatten(Input0, []),
     Input2 = ensure_pattern(Input1),
     Input = ensure_scope(Input2),
-    trace_input(Input, #{mode => Mode, tracers => TracersMap}, ExtraFlags),
+    trace_input(Input, #{mode => Mode, tracers => TracersMap}, Opts),
     ok.
 
 flatten([], Acc) ->
@@ -111,7 +109,7 @@ ensure_scope(Input) ->
 
 trace_input([], _, _) ->
     ok;
-trace_input([{scope, Scope}|Tail], Opts, ExtraFlags) ->
+trace_input([{scope, Scope}|Tail], TracerState, Opts) ->
     %% We currently enable the following trace flags:
     %% - call: function calls
     %% - procs: process exit events; plus others we ignore
@@ -123,18 +121,24 @@ trace_input([{scope, Scope}|Tail], Opts, ExtraFlags) ->
     %%
     %% @todo It might be useful to count the number of sends
     %% or receives a function does.
+    ExtraFlags = [running || maps:get(running, Opts, false)]
+        ++ [send || maps:get(send, Opts, false)],
     _ = [erlang:trace(PidPortSpec, true, [
             call, procs, timestamp, arity, return_to, set_on_spawn,
-            {tracer, lg_tracer, Opts}
+            {tracer, lg_tracer, TracerState}
             |ExtraFlags
         ])
     || PidPortSpec <- Scope],
-    trace_input(Tail, Opts, ExtraFlags);
-trace_input([Mod|Tail], Opts, ExtraFlags) when is_atom(Mod) ->
+    trace_input(Tail, TracerState, Opts);
+trace_input([Mod|Tail], TracerState, Opts) when is_atom(Mod) ->
+    MatchSpec = case Opts of
+        #{process_dump := true} -> [{'_', [], [{message, {process_dump}}]}];
+        _ -> true
+    end,
     %% The module must be loaded before we attempt to trace it.
     _ = code:ensure_loaded(Mod),
-    _ = erlang:trace_pattern({Mod, '_', '_'}, true, [local]),
-    trace_input(Tail, Opts, ExtraFlags).
+    _ = erlang:trace_pattern({Mod, '_', '_'}, MatchSpec, [local]),
+    trace_input(Tail, TracerState, Opts).
 
 stop() ->
     stop(default).

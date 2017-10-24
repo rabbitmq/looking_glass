@@ -125,6 +125,9 @@ wait_for_procs(Refs) ->
 %% We handle trace events one by one, keeping track of the
 %% execution stack for each process.
 
+%% We don't care about match spec results for callgrind.
+handle_event({call, Pid, Ts, MFA, _MSpec}, State) ->
+    handle_event({call, Pid, Ts, MFA}, State);
 handle_event({call, Pid, Ts, MFA}, State0) ->
     Proc = case is_process_profiled(Pid, State0) of
         {true, P} -> P;

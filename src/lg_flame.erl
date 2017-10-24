@@ -12,8 +12,6 @@
 %% If you have any questions regarding licensing, please contact us at
 %% info@rabbitmq.com.
 
-%% This module is based on eflame2. @todo
-%% @todo https://github.com/brendangregg/FlameGraph to generate SVG
 -module(lg_flame).
 
 -export([profile/2]).
@@ -72,18 +70,7 @@ handle_event({Type, Pid, Ts, Arg, ExtraOrMspec}, State) ->
 handle_event({Type, Pid, Ts, Arg, Extra, Mspec}, State) ->
     exp1({trace_ts, Pid, Type, Arg, Extra, Mspec, Ts}, State).
 
-
-
-
-
-
-
-
-
-
-
-
-%% Below is Scott's work with only a handful changes. Should be ISC licensed.
+%% Below is Scott L. Fritchie's ISC licensed work with only a handful changes.
 
 exp1_init(OutputPath) ->
     #state{output_path=OutputPath}.

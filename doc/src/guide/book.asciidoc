@@ -6,4 +6,6 @@ include::tracing.asciidoc[Tracing]
 
 include::callgrind.asciidoc[Callgrind profiling]
 
+include::flame.asciidoc[Flame graph profiling]
+
 include::messages.asciidoc[Messages profiling]

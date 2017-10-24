@@ -1,0 +1,82 @@
+[[flame]]
+== Flame graph profiling
+
+As an alternative to xref:callgrind[Callgrind output],
+Looking Glass provides flame graphs. Flame graphs are
+a graphical view of stack traces that make it obvious
+where the most time is spent. It complements the other
+graphical views provided by `qcachegrind`.
+
+Looking Glass only takes care of providing an output
+that can then be converted into a flame graph using
+the usual tool (not included). This chapter will
+explain both operations.
+
+=== Required trace options
+
+In order to generate a flame graph we currently need to
+use one additional option when tracing. This option will
+result in adding stack trace information to call events.
+The option is `process_dump` and it must be set to `true`.
+
+To give an example, instead of this:
+
+[source,erlang]
+----
+1> lg:trace('_', lg_file_tracer, "traces.lz4").
+----
+
+Do this:
+
+[source,erlang]
+----
+1> lg:trace('_', lg_file_tracer, "traces.lz4",
+    #{process_dump => true}).
+----
+
+=== Profiling one file
+
+The `lg_flame` module provides a similar interface as other
+Looking Glass profilers. You can produce an intermediate
+output based on one or many files.
+
+To profile one file:
+
+[source,erlang]
+----
+1> lg_flame:profile("traces.lz4.1", "output").
+----
+
+This will create an intermediate file named 'output'.
+
+=== Profiling many files
+
+To profile many files:
+
+[source,erlang]
+----
+1> lg_flame:profile_many("traces.lz4.*", "output").
+----
+
+Note that the output is always a single file as the
+results are merged together.
+
+=== Building the flame graph
+
+https://github.com/brendangregg/FlameGraph[flamegraph.pl]
+can be used to produce actual SVG flame graphs.
+
+First we need to clone it. Anywhere will do:
+
+[source,bash]
+$ git clone https://github.com/brendangregg/FlameGraph
+
+Then we can use it on our output file to create an SVG:
+
+[source,bash]
+$ ./FlameGraph/flamegraph.pl output > output.svg
+
+You can then open the output SVG in your Web browser
+of choice. The produced SVG is interactive, you can
+click on the different functions to zoom in, and you
+can also search for a specific function call.

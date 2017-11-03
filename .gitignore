@@ -3,7 +3,7 @@
 c_src/env.mk
 c_src/*.o
 deps/
-ebin/
+ebin/*.beam
 logs/
 looking_glass.d
 priv/lg_tracer.so

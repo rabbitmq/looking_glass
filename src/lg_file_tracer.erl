@@ -51,7 +51,8 @@ loop(State=#state{parent=Parent, io_device=IoDevice,
             terminate(Reason, State);
         {system, From, Request} ->
             sys:handle_system_msg(Request, From, Parent, ?MODULE, [], State);
-        Msg ->
+        Msg0 ->
+            Msg = lg_term:truncate(Msg0),
             Bin = term_to_binary(Msg),
             BinSize = byte_size(Bin),
             Buffer = <<Buffer0/binary, BinSize:32, Bin/binary>>,

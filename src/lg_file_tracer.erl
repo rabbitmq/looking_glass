@@ -54,7 +54,7 @@ loop(State=#state{parent=Parent, io_device=IoDevice,
         Msg ->
             Bin = term_to_binary(Msg),
             BinSize = byte_size(Bin),
-            Buffer = <<Buffer0/binary, BinSize:16, Bin/binary>>,
+            Buffer = <<Buffer0/binary, BinSize:32, Bin/binary>>,
             NumEvents = NumEvents0 + 1,
             if
                 MaxEvents =:= NumEvents ->

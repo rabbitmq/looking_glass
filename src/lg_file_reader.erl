@@ -24,7 +24,9 @@
 -record(state, {
     io_device :: file:io_device(),
     ctx :: lz4f:dctx(),
-    buffer = <<>> :: binary()
+    buffer = <<>> :: binary(),
+    offset = 0 :: non_neg_integer(),
+    uncompressed_offset = 0 :: non_neg_integer()
 }).
 
 %% High level API.
@@ -72,17 +74,18 @@ open(Filename) ->
 
 read_event(State=#state{buffer=Buffer}) ->
     case Buffer of
-        <<Size:16, Bin:Size/binary, Rest/bits>> ->
+        <<Size:32, Bin:Size/binary, Rest/bits>> ->
             convert_event_body(State#state{buffer=Rest}, Bin);
         _ ->
             read_file(State)
     end.
 
-read_file(State=#state{io_device=IoDevice, ctx=Ctx, buffer=Buffer}) ->
+read_file(State=#state{io_device=IoDevice, ctx=Ctx, buffer=Buffer, offset=Offset}) ->
     case file:read(IoDevice, 1000) of
         {ok, Data0} ->
             Data = iolist_to_binary(lz4f:decompress(Ctx, Data0)),
-            read_event(State#state{buffer= <<Buffer/binary, Data/binary>>});
+            read_event(State#state{buffer= <<Buffer/binary, Data/binary>>,
+                offset=Offset + byte_size(Data0)});
         eof ->
             eof;
         {error, Reason} ->
@@ -90,12 +93,12 @@ read_file(State=#state{io_device=IoDevice, ctx=Ctx, buffer=Buffer}) ->
                 'An error occurred while trying to read from the file.'}
     end.
 
-convert_event_body(State, Bin) ->
+convert_event_body(State=#state{offset=Offset, uncompressed_offset=UnOffset}, Bin) ->
     try binary_to_term(Bin) of
         Term ->
-            {ok, Term, State}
+            {ok, Term, State#state{uncompressed_offset=UnOffset + byte_size(Bin)}}
     catch Class:Reason ->
-        {error, {crash, Class, Reason},
+        {error, {crash, Class, Reason, Offset, UnOffset},
             'The binary form of an event could not be decoded to an Erlang term.'}
     end.
 

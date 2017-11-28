@@ -111,6 +111,9 @@ NIF_FUNCTION(enabled)
     ERL_NIF_TERM tracers, value;
     ErlNifPid tracer;
 
+    // @todo We can go one step further by having the one pid
+    // in its own value in the map, skipping a get_map_value step.
+
     // This function will only be called for trace_status.
     // We can take a few shortcuts knowing this.
 

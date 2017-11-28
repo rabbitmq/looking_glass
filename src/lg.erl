@@ -14,8 +14,6 @@
 
 -module(lg).
 
-%% @todo Tracer that listens for one incoming connection and pushes everything through.
-
 -export([trace/1]).
 -export([trace/2]).
 -export([trace/3]).

@@ -76,7 +76,7 @@
 
 -spec patterns() -> lg:input().
 patterns() ->
-    [?MODULE, lg_file_reader].
+    [{app, kernel}, {app, stdlib}, {app, looking_glass}].
 
 -spec profile(file:filename_all(), file:filename_all()) -> ok.
 profile(Input, Output) ->

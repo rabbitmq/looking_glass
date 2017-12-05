@@ -59,7 +59,10 @@ truncate_list(_, _, _, _, NumStructs) when NumStructs > ?MAX_DATA_STRUCTURES ->
     ['$truncated'];
 truncate_list([Term|Tail], Depth, Len, MaxLen, NumStructs) ->
     [truncate(Term, Depth + 1)
-        |truncate_list(Tail, Depth, Len + 1, MaxLen, NumStructs + is_struct(Term))].
+     %% if List was a cons, Tail can be anything
+     |truncate_list(Tail, Depth, Len + 1, MaxLen, NumStructs + is_struct(Term))];
+truncate_list(Term, Depth, _, _, _) -> %% if List was a cons 
+    truncate(Term, Depth + 1).
 
 truncate_map([], _, _) ->
     [];

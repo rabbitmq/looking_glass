@@ -62,7 +62,7 @@ truncate_list([Term|Tail], Depth, Len, MaxLen, NumStructs) ->
      %% if List was a cons, Tail can be anything
      |truncate_list(Tail, Depth, Len + 1, MaxLen, NumStructs + is_struct(Term))];
 truncate_list(Term, Depth, _, _, _) -> %% if List was a cons 
-    truncate(Term, Depth).
+    truncate(Term, Depth + 1).
 
 truncate_map([], _, _) ->
     [];

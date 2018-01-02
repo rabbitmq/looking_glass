@@ -27,8 +27,7 @@ have the quite informative call graphs.
 
 === Requirements
 
-Looking Glass should work out of the box on any system
-with the standard build tools installed.
+Looking Glass requires a C compiler toolchain and an `lz4` library to be installed.
 
 === License
 

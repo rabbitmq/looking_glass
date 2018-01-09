@@ -82,25 +82,21 @@ NIF_ATOMS(NIF_ATOM_DECL)
 
 NIF_FUNCTIONS(NIF_FUNCTION_H_DECL)
 
-int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info);
-int upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data, ERL_NIF_TERM load_info);
-void unload(ErlNifEnv* env, void* priv_data);
-
-int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
+static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
 {
     NIF_ATOMS(NIF_ATOM_INIT)
 
     return 0;
 }
 
-int upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data, ERL_NIF_TERM load_info)
+static int upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data, ERL_NIF_TERM load_info)
 {
     *priv_data = *old_priv_data;
 
     return 0;
 }
 
-void unload(ErlNifEnv* env, void* priv_data)
+static void unload(ErlNifEnv* env, void* priv_data)
 {
 }
 

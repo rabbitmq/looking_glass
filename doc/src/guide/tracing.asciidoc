@@ -337,3 +337,31 @@ sending messages]. To enable the tracing of messages:
 All the options in this section can be combined at will. It is
 possible to use the data from the same tracing session when
 profiling both functions and messages.
+
+=== Trace file rotation
+
+For long running sessions Looking Glass can rotate trace files.
+This is a feature that helps avoid running out of disk space
+and is not meant to be for keeping files small (Looking Glass
+can deal with very large files just fine).
+
+Instead of passing a filename prefix as a third argument to
+`lg:trace/3,4`, a map can be provided. There are currently
+three options including the `filename_prefix`. The other options
+are the maximum file size in bytes, `max_size`, and the number
+of events that will be stored per LZ4 frame in the file,
+`events_per_frame`. These two options allow you to control
+how often the file will be written to or rotated.
+
+The following example will limit the file sizes to 100MB:
+
+[source,erlang]
+----
+1> lg:trace('_', lg_file_tracer,
+    #{filename_prefix => "traces.lz4", max_size => 100000000},
+    #{mode => profile, running => true}).
+----
+
+During testing of this feature it appeared that the rotation
+as it's currently implemented is expensive, therefore you
+should be careful not to put a value that's too low.

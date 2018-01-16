@@ -41,6 +41,24 @@ file_tracer(Config) ->
     lg:stop(),
     do_ensure_decompress(config(priv_dir, Config) ++ "/file_tracer.lz4").
 
+file_tracer_rotation(Config) ->
+    doc("Save events to files on disk; rotate the files if they get too big."),
+    Prefix = config(priv_dir, Config) ++ "/file_tracer.lz4",
+    lg:trace(lists, lg_file_tracer, #{
+        filename_prefix => Prefix,
+        max_size => 100, %% Intentionally low.
+        events_per_frame => 10 %% Needed to trigger the rotation, default is too high.
+    }),
+    lists:seq(1,1000),
+    lg:stop(),
+    %% We should have one or more rotated files.
+    Result = [begin
+        Filename = Prefix ++ "." ++ integer_to_list(N) ++ ".bak",
+        filelib:is_file(Filename)
+    end || N <- lists:seq(1, erlang:system_info(schedulers))],
+    true = lists:member(true, lists:usort(Result)),
+    ok.
+
 mod(Config) ->
     doc("Trace a specific module."),
     lg:trace(lists, lg_file_tracer, config(priv_dir, Config) ++ "/mod.lz4"),

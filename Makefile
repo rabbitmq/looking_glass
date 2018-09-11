@@ -16,6 +16,8 @@ C_SRC_OUTPUT ?= $(CURDIR)/priv/lg_tracer
 TEST_DEPS = ct_helper
 dep_ct_helper = git https://github.com/ninenines/ct_helper master
 
+TEST_ERLC_OPTS += +'{parse_transform, eunit_autoexport}'
+
 include erlang.mk
 
 # CT_OPTS += -boot start_sasl

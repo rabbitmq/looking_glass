@@ -43,7 +43,7 @@ truncate(Term, Depth) when is_list(Term) ->
 truncate(Term, Depth) when is_map(Term), Depth =:= ?MAX_DEPTH ->
     #{'$truncated' => '$truncated'};
 truncate(Term, Depth) when is_map(Term) ->
-    maps:from_list(truncate_map(erts_internal:maps_to_list(Term, ?MAX_MAP_SIZE), Depth, 0));
+    maps:from_list(truncate_map(maps_to_list(Term, ?MAX_MAP_SIZE), Depth, 0));
 truncate(Term, Depth) when is_tuple(Term), Depth =:= ?MAX_DEPTH ->
     {'$truncated'};
 truncate(Term, Depth) when is_tuple(Term) ->
@@ -80,3 +80,47 @@ is_struct(Term) ->
         is_tuple(Term) -> 1;
         true -> 0
     end.
+
+%% Map iterators were introduced in Erlang/OTP 21. They replace
+%% the undocumented function erts_internal:maps_to_list/2.
+-ifdef(OTP_RELEASE).
+
+maps_to_list(Map, MaxSize) ->
+    I = maps:iterator(Map),
+    maps_to_list(maps:next(I), MaxSize, []).
+
+%% Returns elements in arbitrary order. We reverse when we truncate
+%% so that the truncated elements come at the end to avoid having
+%% two truncated elements in the final output.
+maps_to_list(none, _, Acc) ->
+    Acc;
+maps_to_list(_, 0, Acc) ->
+    lists:reverse([{'$truncated', '$truncated'}|Acc]);
+maps_to_list({K, V, I}, N, Acc) ->
+    maps_to_list(maps:next(I), N - 1, [{K, V}|Acc]).
+
+-else.
+
+maps_to_list(Map, MaxSize) ->
+    erts_internal:maps_to_list(Map, MaxSize).
+
+-endif.
+
+-ifdef(TEST).
+
+maps_to_list_test() ->
+    [] = maps_to_list(#{}, 10),
+    [{'$truncated', '$truncated'}] = maps_to_list(#{a => b}, 0),
+    [{a, b}] = maps_to_list(#{a => b}, 10),
+    [{a, b}, {c, d}, {e, f}] = lists:sort(maps_to_list(
+        #{a => b, c => d, e => f}, 3)),
+    [{'$truncated', '$truncated'}, {a, b}, {c, d}, {e, f}] = lists:sort(maps_to_list(
+        #{a => b, c => d, e => f, g => h}, 3)),
+    [{'$truncated', '$truncated'}, {a, b}, {c, d}, {e, f}] = lists:sort(maps_to_list(
+        #{a => b, c => d, e => f, g => h, i => j}, 3)),
+    %% Confirm that truncated values are at the end.
+    [_, _, _, {'$truncated', '$truncated'}] = maps_to_list(
+        #{a => b, c => d, e => f, g => h, i => j}, 3),
+    ok.
+
+-endif.

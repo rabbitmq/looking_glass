@@ -14,6 +14,10 @@
 
 -module(lg_flame).
 
+-ifdef(OTP_RELEASE).
+-compile({nowarn_deprecated_function, [{erlang, get_stacktrace, 0}]}).
+-endif.
+
 -export([profile/2]).
 -export([profile_many/2]).
 

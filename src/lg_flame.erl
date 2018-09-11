@@ -54,7 +54,7 @@ flush(#state{output_path=OutputPath}) ->
     PidStates = get(),
     {ok, FH} = file:open(OutputPath, [write, raw, binary, delayed_write]),
     io:format("\n\nWriting to ~s for ~w processes... ", [OutputPath, length(PidStates)]),
-    [
+    _ = [
         [begin
              Pid_str0 = lists:flatten(io_lib:format("~w", [Pid])),
              Size = length(Pid_str0),
@@ -63,7 +63,7 @@ flush(#state{output_path=OutputPath}) ->
              file:write(FH, [Pid_str, $;, intersperse($;, lists:reverse(Stack)), 32, Time_str, 10])
          end || {Stack, Time} <- Acc]
      || {Pid, #state{acc=Acc} = _S} <- PidStates],
-    file:close(FH),
+    _ = file:close(FH),
     io:format("finished!\n"),
     ok.
 
@@ -211,17 +211,17 @@ exp1_inner({trace_ts, _Pid, in, MFA, TS}, #state{last_ts=LastTS, acc=Acc} = S) -
             S
   end;
 
-exp1_inner(end_of_trace = _Else, #state{pid=Pid, output_path=OutputPath, acc=Acc} = S) ->
-    {ok, FH} = file:open(OutputPath, [write, raw, binary, delayed_write]),
-    io:format("Writing to ~s ... ", [OutputPath]),
-    [begin
-         Pid_str = io_lib:format("~w", [Pid]),
-         Time_str = integer_to_list(Time),
-         file:write(FH, [Pid_str, $;, intersperse($;, lists:reverse(Stack)), 32, Time_str, 10])
-     end || {Stack, Time} <- Acc],
-    file:close(FH),
-    io:format("finished\n"),
-    S;
+%exp1_inner(end_of_trace = _Else, #state{pid=Pid, output_path=OutputPath, acc=Acc} = S) ->
+%    {ok, FH} = file:open(OutputPath, [write, raw, binary, delayed_write]),
+%    io:format("Writing to ~s ... ", [OutputPath]),
+%    [begin
+%         Pid_str = io_lib:format("~w", [Pid]),
+%         Time_str = integer_to_list(Time),
+%         file:write(FH, [Pid_str, $;, intersperse($;, lists:reverse(Stack)), 32, Time_str, 10])
+%     end || {Stack, Time} <- Acc],
+%    file:close(FH),
+%    io:format("finished\n"),
+%    S;
 exp1_inner(_Else, S) ->
 %    io:format("?? ~P\n", [_Else, 10]),
     S.

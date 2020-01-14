@@ -310,6 +310,7 @@ update_mfas([Call=#call{mfa=MFA, incl=Incl, self=Self, count=Count, calls=SubCal
 
 write_header(#state{output_device=OutDevice, opts=#{running := true}}) ->
     ok = file:write(OutDevice,
+        "# callgrind format\n"
         "events: Total Active Wait WaitCount\n"
         "event: Total : Total time in microseconds\n"
         "event: Active : Active time in microseconds\n"
@@ -318,6 +319,7 @@ write_header(#state{output_device=OutDevice, opts=#{running := true}}) ->
         "\n");
 write_header(#state{output_device=OutDevice}) ->
     ok = file:write(OutDevice,
+        "# callgrind format\n"
         "events: Total\n"
         "event: Total : Total time in microseconds\n"
         "\n").

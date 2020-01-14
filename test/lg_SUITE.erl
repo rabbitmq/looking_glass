@@ -34,6 +34,43 @@ callback(Config) ->
 do_callback() ->
     [{scope, [self()]}, lists].
 
+callgrind_running(Config) ->
+    doc("Save events to files on disk then build callgrind files."),
+    PrivDir = config(priv_dir, Config),
+    lg:trace([{scope, [self()]}, ?MODULE, {app, stdlib}], lg_file_tracer,
+        PrivDir ++ "/callgrind_running.lz4",
+        #{mode => profile, running => true}),
+    do_callgrind_running(),
+    lg:stop(),
+    lg_callgrind:profile_many(
+        PrivDir ++ "/callgrind_running.lz4.*",
+        PrivDir ++ "/callgrind_running.out",
+        #{running => true}),
+    %% For debugging purposes, print the contents of the callgrind.out files.
+    %% Uncomment for easier debugging, otherwise look into the files directly.
+%    _ = [begin
+%        {ok, File} = file:read_file(PrivDir ++ "/callgrind_running.out." ++ integer_to_list(N)),
+%        io:format(user, "# callgrind_running.out.~p~n~s", [N, File]),
+%        lg_file_reader:foreach(fun(E) -> io:format(user, "~p~n", [E]) end,
+%            PrivDir ++ "/callgrind_running.lz4." ++ integer_to_list(N))
+%    end || N <- lists:seq(1, erlang:system_info(schedulers))],
+    ok.
+
+do_callgrind_running() ->
+    timer:sleep(1000),
+    Ref = make_ref(),
+    erlang:send_after(1000, self(), {go, Ref}),
+    lists:seq(1,100),
+    do_callgrind_running_receive(Ref),
+    lists:seq(1,100),
+    ok.
+
+do_callgrind_running_receive(Ref) ->
+    receive
+        {go, Ref} ->
+            ok
+    end.
+
 file_tracer(Config) ->
     doc("Save events to files on disk."),
     lg:trace(lists, lg_file_tracer, config(priv_dir, Config) ++ "/file_tracer.lz4"),

@@ -42,8 +42,10 @@
     self = 0 :: integer(),
     %% Number of times the function was called.
     count = 1 :: pos_integer(),
-    %% Time when the process was not running.
+    %% Time when the process was not running in this function.
     wait = 0 :: non_neg_integer(),
+    %% Time when the process was not running in this function or any subcalls.
+    wait_incl = 0 :: non_neg_integer(),
     %% Number of times the process was scheduled out.
     wait_count = 0 :: non_neg_integer(),
     %% Calls done by this MFA.
@@ -196,6 +198,14 @@ is_process_profiled(Pid, #state{processes=Procs}) ->
 %% doesn't have loops, it will appear a little weird if
 %% compared to an imperative language.
 
+%% Recursive call. Just increase the call count.
+handle_call(Pid, MFA, _Source, _Ts,
+        Proc0=#proc{stack=[Call=#call{mfa=MFA, count=Count}|Stack0]},
+        State=#state{processes=Procs}) ->
+    Stack = [Call#call{count=Count + 1}|Stack0],
+    Proc = Proc0#proc{stack=Stack},
+    State#state{processes=Procs#{Pid => Proc}};
+%% Non-recursive call.
 handle_call(Pid, MFA, Source, Ts, Proc0=#proc{stack=Stack0},
         State=#state{processes=Procs}) ->
     %% @todo As an optimization, we should probably increase the
@@ -247,10 +257,17 @@ handle_return_to(Pid, MFA, Ts, Proc0=#proc{stack=[Current|Stack0], mfas=MFAs0},
 %% We keep track of how many times the process was scheduled out
 %% per function, and how long.
 
-handle_in(Pid, InTs, Proc0=#proc{stack=[Current0|Stack], out=OutTs},
+handle_in(Pid, InTs, Proc0=#proc{stack=[Current0|Stack0], out=OutTs},
         State=#state{processes=Procs}) ->
-    #call{wait=Wait, wait_count=WaitCount} = Current0,
-    Current = Current0#call{wait=Wait + InTs - OutTs, wait_count=WaitCount + 1},
+    #call{wait=Wait, wait_incl=WaitIncl, wait_count=WaitCount} = Current0,
+    ThisWait = InTs - OutTs,
+    %% We increase the wait time for self first.
+    Current = Current0#call{wait=Wait + ThisWait, wait_incl=WaitIncl + ThisWait, wait_count=WaitCount + 1},
+    %% And then for the parent calls to include wait time of subcalls.
+    %% @todo Also check wait_count.
+    Stack = [
+        Call#call{wait_incl=ParentWaitIncl + ThisWait}
+    || Call=#call{wait_incl=ParentWaitIncl} <- Stack0],
     Proc = Proc0#proc{stack=[Current|Stack], out=undefined},
     State#state{processes=Procs#{Pid => Proc}}.
 
@@ -274,17 +291,23 @@ update_calls([Call, ParentCall0|Tail], Stack0) ->
     {[_|Returned], Stack} = update_calls([ParentCall|Tail], Stack0),
     {[Call, ParentCall|Returned], Stack}.
 
-update_parent_call(Call=#call{mfa=MFA, incl=Incl},
+update_parent_call(Call=#call{mfa=MFA, incl=Incl, count=Count, wait_incl=WaitIncl, wait_count=WaitCount},
         ParentCall=#call{self=ParentSelf, calls=SubCalls}) ->
     case maps:get(MFA, SubCalls, undefined) of
         undefined ->
             %% We substract the time spent in the callee from the caller
             %% and remove any callee subcalls as we don't need those.
             ParentCall#call{self=ParentSelf - Incl, calls=SubCalls#{MFA => Call#call{calls=#{}}}};
-        _ ->
-            %% Same as above, except we don't touch the sub calls.
-            %% Values get updated in update_mfas/2.
-            ParentCall#call{self=ParentSelf - Incl}
+        ChildCall=#call{incl=ChildIncl, count=ChildCount, wait_incl=ChildWaitIncl, wait_count=ChildWaitCount} ->
+            %% Same as above, except we update the child call in the subcalls.
+            %% We need to maintain both the direct subcalls and the aggregated MFAs.
+            ParentCall#call{self=ParentSelf - Incl, calls=SubCalls#{MFA => ChildCall#call{
+                %% We do not care about self/wait as we will be using incl/wait_incl in the output.
+                incl=Incl + ChildIncl,
+                count=Count + ChildCount,
+                wait_incl=WaitIncl + ChildWaitIncl,
+                wait_count=WaitCount + ChildWaitCount
+            }}}
     end.
 
 %% Update the profiling information we currently hold.
@@ -352,10 +375,10 @@ write_call(Pid, #call{mfa=MFA, source={Source, LN}, self=Self, wait=Wait,
         "fl=", Source, "\n"
         "fn=", atom_to_list(MFA), "\n",
         integer_to_list(LN), " ", integer_to_list(Self), RunningCosts, "\n",
-        format_subcalls(LN, Calls),
+        format_subcalls(LN, Calls, Opts),
         "\n"]).
 
-format_subcalls(_, []) ->
+format_subcalls(_, [], _) ->
     [];
 %% @todo We don't need to write the filename for functions in the same module.
 %% @todo We also don't want to put the full file name; instead we should remove
@@ -363,13 +386,24 @@ format_subcalls(_, []) ->
 %%
 %% We only look at where the function is defined, we can't really get
 %% the actual line number where the call happened, unfortunately.
-format_subcalls(LN, [#call{mfa=MFA, source={Source, TargetLN}, incl=Incl, count=Count, calls=_Calls}|Tail]) ->
+format_subcalls(LN, [#call{mfa=MFA, source={Source, TargetLN}, incl=Incl,
+        wait_incl=Wait, wait_count=WaitCount, count=Count, calls=_Calls}|Tail], Opts) ->
+    RunningCosts = case Opts of
+        #{running := true} ->
+            [
+                " ", integer_to_list(Incl - Wait),
+                " ", integer_to_list(Wait),
+                " ", integer_to_list(WaitCount)
+            ];
+        _ ->
+            []
+    end,
     [[
         "cfi=", Source, "\n"
         "cfn=", atom_to_list(MFA), "\n"
         "calls=", integer_to_list(Count), " ", integer_to_list(TargetLN), "\n",
-        integer_to_list(LN), " ", integer_to_list(Incl), "\n"
-    ]|format_subcalls(LN, Tail)].
+        integer_to_list(LN), " ", integer_to_list(Incl), RunningCosts, "\n"
+    ]|format_subcalls(LN, Tail, Opts)].
 
 convert_mfa(undefined) ->
     undefined;

@@ -326,7 +326,6 @@ handle_in(Pid, InTs, Proc0=#proc{stack=[Current0|Stack0], out=OutTs},
     %% We increase the wait time for self first.
     Current = Current0#call{wait=Wait + ThisWait, wait_incl=WaitIncl + ThisWait, wait_count=WaitCount + 1},
     %% And then for the parent calls to include wait time of subcalls.
-    %% @todo Also check wait_count.
     Stack = [
         Call#call{wait_incl=ParentWaitIncl + ThisWait}
     || Call=#call{wait_incl=ParentWaitIncl} <- Stack0],

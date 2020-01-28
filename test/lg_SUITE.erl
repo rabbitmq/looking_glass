@@ -86,12 +86,12 @@ callgrind_running_cycle(Config) ->
         #{running => true}),
     %% For debugging purposes, print the contents of the callgrind.out files.
     %% Uncomment for easier debugging, otherwise look into the files directly.
-    _ = [begin
-        {ok, File} = file:read_file(PrivDir ++ "/callgrind_running_cycle.out." ++ integer_to_list(N)),
-        io:format(user, "# callgrind_running_cycle.out.~p~n~s", [N, File]),
-        lg_file_reader:foreach(fun(E) -> io:format(user, "~p~n", [E]) end,
-            PrivDir ++ "/callgrind_running_cycle.lz4." ++ integer_to_list(N))
-    end || N <- lists:seq(1, erlang:system_info(schedulers))],
+%    _ = [begin
+%        {ok, File} = file:read_file(PrivDir ++ "/callgrind_running_cycle.out." ++ integer_to_list(N)),
+%        io:format(user, "# callgrind_running_cycle.out.~p~n~s", [N, File]),
+%        lg_file_reader:foreach(fun(E) -> io:format(user, "~p~n", [E]) end,
+%            PrivDir ++ "/callgrind_running_cycle.lz4." ++ integer_to_list(N))
+%    end || N <- lists:seq(1, erlang:system_info(schedulers))],
     ok.
 
 do_callgrind_running_cycle() ->

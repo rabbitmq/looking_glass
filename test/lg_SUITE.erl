@@ -71,6 +71,59 @@ do_callgrind_running_receive(Ref) ->
             ok
     end.
 
+callgrind_running_cycle(Config) ->
+    doc("Save events to files on disk then build callgrind files. "
+        "Create a recursive cycle using two functions calling each other."),
+    PrivDir = config(priv_dir, Config),
+    lg:trace([{scope, [self()]}, ?MODULE, {app, stdlib}], lg_file_tracer,
+        PrivDir ++ "/callgrind_running_cycle.lz4",
+        #{mode => profile, running => true}),
+    do_callgrind_running_cycle(),
+    lg:stop(),
+    lg_callgrind:profile_many(
+        PrivDir ++ "/callgrind_running_cycle.lz4.*",
+        PrivDir ++ "/callgrind_running_cycle.out",
+        #{running => true}),
+    %% For debugging purposes, print the contents of the callgrind.out files.
+    %% Uncomment for easier debugging, otherwise look into the files directly.
+    _ = [begin
+        {ok, File} = file:read_file(PrivDir ++ "/callgrind_running_cycle.out." ++ integer_to_list(N)),
+        io:format(user, "# callgrind_running_cycle.out.~p~n~s", [N, File]),
+        lg_file_reader:foreach(fun(E) -> io:format(user, "~p~n", [E]) end,
+            PrivDir ++ "/callgrind_running_cycle.lz4." ++ integer_to_list(N))
+    end || N <- lists:seq(1, erlang:system_info(schedulers))],
+    ok.
+
+do_callgrind_running_cycle() ->
+    timer:sleep(1000),
+    lists:seq(1,100),
+    do_callgrind_running_cycle1(do_callgrind_running_cycle_timer(20)),
+    lists:seq(1,100),
+    ok.
+
+do_callgrind_running_cycle_timer(N) ->
+    erlang:start_timer(N * 10, self(), N).
+
+do_callgrind_running_cycle1(Ref) ->
+    receive
+        {timeout, Ref, 0} ->
+            ok;
+        {timeout, Ref, N} when N rem 5 =:= 0 ->
+            do_callgrind_running_cycle2(do_callgrind_running_cycle_timer(N - 1));
+        {timeout, Ref, N} ->
+            do_callgrind_running_cycle1(do_callgrind_running_cycle_timer(N - 1))
+    end.
+
+do_callgrind_running_cycle2(Ref) ->
+    receive
+        {timeout, Ref, 0} ->
+            ok;
+        {timeout, Ref, N} when N rem 4 =:= 0 ->
+            do_callgrind_running_cycle1(do_callgrind_running_cycle_timer(N - 1));
+        {timeout, Ref, N} ->
+            do_callgrind_running_cycle2(do_callgrind_running_cycle_timer(N - 1))
+    end.
+
 file_tracer(Config) ->
     doc("Save events to files on disk."),
     lg:trace(lists, lg_file_tracer, config(priv_dir, Config) ++ "/file_tracer.lz4"),

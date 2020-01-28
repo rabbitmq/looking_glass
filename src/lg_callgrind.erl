@@ -36,6 +36,8 @@
     source :: {string(), pos_integer()},
     %% The timestamp for the call.
     ts :: pos_integer(),
+    %% The timestamp for when we last started executing this function.
+    self_ts :: pos_integer(),
     %% Execution time including subcalls.
     incl :: undefined | non_neg_integer(),
     %% Execution time excluding subcalls.
@@ -208,10 +210,7 @@ handle_call(Pid, MFA, _Source, _Ts,
 %% Non-recursive call.
 handle_call(Pid, MFA, Source, Ts, Proc0=#proc{stack=Stack0},
         State=#state{processes=Procs}) ->
-    %% @todo As an optimization, we should probably increase the
-    %% call count instead of adding to the stack. This requires
-    %% us to track the number of returns from the function.
-    Stack = [#call{mfa=MFA, source=Source, ts=Ts}|Stack0],
+    Stack = [#call{mfa=MFA, source=Source, ts=Ts, self_ts=Ts}|Stack0],
     Proc = Proc0#proc{stack=Stack},
     State#state{processes=Procs#{Pid => Proc}}.
 
@@ -221,25 +220,41 @@ handle_call(Pid, MFA, Source, Ts, Proc0=#proc{stack=Stack0},
 %% the way up, higher than where we started (for example
 %% because we were not tracing the function we actually
 %% end up returning to), we get everything.
+%%
+%% The current call started when it was called and stopped
+%% on the return_to timestamp. Therefore it is fairly simple
+%% to calculate its incl/self times.
+%%
+%% Other calls returning at the same time are tail calls.
+%% In their case, the incl time is the same as for the
+%% current call. However the self time must not stop when
+%% returning but rather when doing the final tail call.
+%% We also update sub call times since those must be
+%% maintained separately.
+%%
+%% NOTE: Due to how the VM works, if a function has both
+%% tail and non-tail calls, it becomes impossible to know
+%% what is or is not a tail call, and therefore values
+%% may be wrong. Do not write such functions! For example:
+%%
+%%    a(true) -> 1 + b(); a(false) -> b().
+%%
+%% Finally we must also update the self for the call we
+%% actually return to. In its case we use the time we
+%% were last executing the function as a start point,
+%% and the return time for the end. Here again we also
+%% update the sub call times.
 
-handle_return_to(Pid, MFA, Ts, Proc0=#proc{stack=[Current|Stack0], mfas=MFAs0},
+handle_return_to(Pid, MFA, Ts, Proc0=#proc{stack=[Current0|Stack0], mfas=MFAs0},
         State=#state{processes=Procs}) ->
     {Returned0, Stack1} = lists:splitwith(
         fun(#call{mfa=E}) -> E =/= MFA end,
         Stack0),
-    Returned1 = [Current|Returned0],
-    %% First we calculate the time spent in all the calls that returned.
-    %% This is the time including all sub calls. We also add the time
-    %% difference to self. Self might be negative then if it calls many
-    %% functions, as update_parent_call might substract subcall time
-    %% while the function is in the stack.
-    Returned2 = [Call#call{incl=Ts - CallTs, self=Self + Ts - CallTs}
-        || Call=#call{ts=CallTs, self=Self} <- Returned1],
-    %% Then we update all the sub-calls for all functions returned,
-    %% and the first function in the new stack (the function we
-    %% return to).
-    {Returned, Stack} = update_calls(Returned2, Stack1),
-    %% Last, we save the profile information, potentially flushing it
+    #call{ts=CurrentTs, self_ts=CurrentSelfTs, self=CurrentSelf} = Current0,
+    Current = Current0#call{incl=Ts - CurrentTs, self=CurrentSelf + Ts - CurrentSelfTs},
+    Returned = update_tail_calls([Current|Returned0], Ts),
+    Stack = update_stack(Returned, Stack1, Ts),
+    %% Save the profile information in the state, potentially flushing it
     %% to disk if the stack is empty.
     MFAs1 = update_mfas(Returned, MFAs0),
     MFAs = case Stack of
@@ -251,6 +266,53 @@ handle_return_to(Pid, MFA, Ts, Proc0=#proc{stack=[Current|Stack0], mfas=MFAs0},
     end,
     Proc = Proc0#proc{stack=Stack, mfas=MFAs},
     State#state{processes=Procs#{Pid => Proc}}.
+
+update_tail_calls([Call], _) ->
+    [Call];
+update_tail_calls([
+            Callee=#call{ts=CalleeTs},
+            Caller0=#call{ts=CallerTs, self_ts=CallerSelfTs, self=CallerSelf}
+        |Tail], ReturnToTs) ->
+    Caller1 = Caller0#call{
+        incl=ReturnToTs - CallerTs,
+        self=CallerSelf + CalleeTs - CallerSelfTs
+    },
+    Caller = update_sub_calls(Callee, Caller1),
+    [Callee|update_tail_calls([Caller|Tail], ReturnToTs)].
+
+%% Update nothing; there's nothing in the stack.
+update_stack(_, [], _) ->
+    [];
+%% Update the incl/self value based on the top-level function we return from,
+%% but only update the sub calls based on the function we directly called.
+update_stack(Returned,
+        [Caller0=#call{self_ts=CallerSelfTs, self=CallerSelf}|Stack],
+        ReturnToTs) ->
+    Callee = #call{ts=CalleeTs} = hd(lists:reverse(Returned)),
+    Caller = Caller0#call{
+        self_ts=ReturnToTs,
+        self=CallerSelf + CalleeTs - CallerSelfTs
+    },
+    [update_sub_calls(Callee, Caller)|Stack].
+
+update_sub_calls(Callee=#call{mfa=MFA, incl=CallerIncl, count=CallerCount,
+        wait_incl=CallerWaitIncl, wait_count=CallerWaitCount},
+        Caller=#call{calls=SubCalls}) ->
+    case maps:get(MFA, SubCalls, undefined) of
+        %% Add the callee to the subcalls but remove the callee's subcalls
+        %% since we don't need those here.
+        undefined ->
+            Caller#call{calls=SubCalls#{MFA => Callee#call{calls=#{}}}};
+        %% Same as above, except we add to the existing values.
+        Sub = #call{incl=SubIncl, count=SubCount, wait_incl=SubWaitIncl, wait_count=SubWaitCount} ->
+            Caller#call{calls=SubCalls#{MFA => Sub#call{
+                %% We do not care about self/wait here as we will be using incl/wait_incl in the output.
+                incl=SubIncl + CallerIncl,
+                count=SubCount + CallerCount,
+                wait_incl=SubWaitIncl + CallerWaitIncl,
+                wait_count=SubWaitCount + CallerWaitCount
+            }}}
+    end.
 
 %% Processes get scheduled in and out. We get the corresponding
 %% in and out events when the 'running' option is set to true.
@@ -276,48 +338,17 @@ handle_out(Pid, Ts, Proc0=#proc{out=undefined},
     Proc = Proc0#proc{out=Ts},
     State#state{processes=Procs#{Pid => Proc}}.
 
-%% Update the call we return to in the stack.
-update_calls(Returned=[Call], [ParentCall0|Stack]) ->
-    ParentCall = update_parent_call(Call, ParentCall0),
-    {Returned, [ParentCall|Stack]};
-%% Update nothing; there's nothing in the stack.
-update_calls(Returned=[_], Stack=[]) ->
-    {Returned, Stack};
-%% Update the parent function that returned at the same time.
-%% This occurs when the function call was tail recursive,
-%% and the MFA is different between caller and callee.
-update_calls([Call, ParentCall0|Tail], Stack0) ->
-    ParentCall = update_parent_call(Call, ParentCall0),
-    {[_|Returned], Stack} = update_calls([ParentCall|Tail], Stack0),
-    {[Call, ParentCall|Returned], Stack}.
-
-update_parent_call(Call=#call{mfa=MFA, incl=Incl, count=Count, wait_incl=WaitIncl, wait_count=WaitCount},
-        ParentCall=#call{self=ParentSelf, calls=SubCalls}) ->
-    case maps:get(MFA, SubCalls, undefined) of
-        undefined ->
-            %% We substract the time spent in the callee from the caller
-            %% and remove any callee subcalls as we don't need those.
-            ParentCall#call{self=ParentSelf - Incl, calls=SubCalls#{MFA => Call#call{calls=#{}}}};
-        ChildCall=#call{incl=ChildIncl, count=ChildCount, wait_incl=ChildWaitIncl, wait_count=ChildWaitCount} ->
-            %% Same as above, except we update the child call in the subcalls.
-            %% We need to maintain both the direct subcalls and the aggregated MFAs.
-            ParentCall#call{self=ParentSelf - Incl, calls=SubCalls#{MFA => ChildCall#call{
-                %% We do not care about self/wait as we will be using incl/wait_incl in the output.
-                incl=Incl + ChildIncl,
-                count=Count + ChildCount,
-                wait_incl=WaitIncl + ChildWaitIncl,
-                wait_count=WaitCount + ChildWaitCount
-            }}}
-    end.
-
 %% Update the profiling information we currently hold.
 update_mfas([], MFAs) ->
     MFAs;
-update_mfas([Call=#call{mfa=MFA, incl=Incl, self=Self, count=Count, calls=SubCalls}|Tail], MFAs) ->
+update_mfas([Call=#call{mfa=MFA, incl=Incl, self=Self, wait=Wait, wait_incl=WaitIncl,
+        count=Count, calls=SubCalls}|Tail], MFAs) ->
     case MFAs of
-        #{MFA := AggCall0=#call{incl=AggIncl, self=AggSelf, count=AggCount, calls=AggSubCalls0}} ->
+        #{MFA := AggCall0=#call{incl=AggIncl, self=AggSelf, wait=AggWait, wait_incl=AggWaitIncl,
+                count=AggCount, calls=AggSubCalls0}} ->
             AggSubCalls = update_mfas(maps:values(SubCalls), AggSubCalls0),
             AggCall=AggCall0#call{incl=Incl + AggIncl, self=Self + AggSelf,
+                wait=Wait + AggWait, wait_incl=WaitIncl + AggWaitIncl,
                 count=Count + AggCount, calls=AggSubCalls},
             update_mfas(Tail, MFAs#{MFA => AggCall});
         _ ->

@@ -50,6 +50,8 @@
     wait_incl = 0 :: non_neg_integer(),
     %% Number of times the process was scheduled out.
     wait_count = 0 :: non_neg_integer(),
+    %% Number of times the function or any subcall was scheduled out.
+    wait_count_incl = 0 :: non_neg_integer(),
     %% Calls done by this MFA.
     calls = #{} :: #{atom() => #call{}}
 }).
@@ -296,21 +298,19 @@ update_stack(Returned,
     [update_sub_calls(Callee, Caller)|Stack].
 
 update_sub_calls(Callee=#call{mfa=MFA, incl=CallerIncl, count=CallerCount,
-        wait_incl=CallerWaitIncl, wait_count=CallerWaitCount},
-        Caller=#call{calls=SubCalls}) ->
+        wait_incl=CallerWaitIncl}, Caller=#call{calls=SubCalls}) ->
     case maps:get(MFA, SubCalls, undefined) of
         %% Add the callee to the subcalls but remove the callee's subcalls
         %% since we don't need those here.
         undefined ->
             Caller#call{calls=SubCalls#{MFA => Callee#call{calls=#{}}}};
         %% Same as above, except we add to the existing values.
-        Sub = #call{incl=SubIncl, count=SubCount, wait_incl=SubWaitIncl, wait_count=SubWaitCount} ->
+        Sub = #call{incl=SubIncl, count=SubCount, wait_incl=SubWaitIncl} ->
             Caller#call{calls=SubCalls#{MFA => Sub#call{
                 %% We do not care about self/wait here as we will be using incl/wait_incl in the output.
                 incl=SubIncl + CallerIncl,
                 count=SubCount + CallerCount,
-                wait_incl=SubWaitIncl + CallerWaitIncl,
-                wait_count=SubWaitCount + CallerWaitCount
+                wait_incl=SubWaitIncl + CallerWaitIncl
             }}}
     end.
 
@@ -321,14 +321,18 @@ update_sub_calls(Callee=#call{mfa=MFA, incl=CallerIncl, count=CallerCount,
 
 handle_in(Pid, InTs, Proc0=#proc{stack=[Current0|Stack0], out=OutTs},
         State=#state{processes=Procs}) ->
-    #call{wait=Wait, wait_incl=WaitIncl, wait_count=WaitCount} = Current0,
+    #call{mfa=CurrentMFA,
+        wait=Wait, wait_incl=WaitIncl,
+        wait_count=WaitCount, wait_count_incl=WaitCountIncl
+    } = Current0,
     ThisWait = InTs - OutTs,
     %% We increase the wait time for self first.
-    Current = Current0#call{wait=Wait + ThisWait, wait_incl=WaitIncl + ThisWait, wait_count=WaitCount + 1},
+    Current = Current0#call{wait=Wait + ThisWait, wait_incl=WaitIncl + ThisWait,
+        wait_count=WaitCount + 1, wait_count_incl=WaitCountIncl + 1},
     %% And then for the parent calls to include wait time of subcalls.
     Stack = [
-        Call#call{wait_incl=ParentWaitIncl + ThisWait}
-    || Call=#call{wait_incl=ParentWaitIncl} <- Stack0],
+        Call#call{wait_incl=ParentWaitIncl + ThisWait, wait_count_incl=ParentWaitCount + 1}
+    || Call=#call{wait_incl=ParentWaitIncl, wait_count_incl=ParentWaitCount} <- Stack0],
     Proc = Proc0#proc{stack=[Current|Stack], out=undefined},
     State#state{processes=Procs#{Pid => Proc}}.
 
@@ -341,13 +345,17 @@ handle_out(Pid, Ts, Proc0=#proc{out=undefined},
 update_mfas([], MFAs) ->
     MFAs;
 update_mfas([Call=#call{mfa=MFA, incl=Incl, self=Self, wait=Wait, wait_incl=WaitIncl,
+        wait_count=WaitCount, wait_count_incl=WaitCountIncl,
         count=Count, calls=SubCalls}|Tail], MFAs) ->
     case MFAs of
         #{MFA := AggCall0=#call{incl=AggIncl, self=AggSelf, wait=AggWait, wait_incl=AggWaitIncl,
+                wait_count=AggWaitCount, wait_count_incl=AggWaitCountIncl,
                 count=AggCount, calls=AggSubCalls0}} ->
             AggSubCalls = update_mfas(maps:values(SubCalls), AggSubCalls0),
             AggCall=AggCall0#call{incl=Incl + AggIncl, self=Self + AggSelf,
                 wait=Wait + AggWait, wait_incl=WaitIncl + AggWaitIncl,
+                wait_count=WaitCount + AggWaitCount,
+                wait_count_incl=WaitCountIncl + AggWaitCountIncl,
                 count=Count + AggCount, calls=AggSubCalls},
             update_mfas(Tail, MFAs#{MFA => AggCall});
         _ ->
@@ -417,7 +425,7 @@ format_subcalls(_, [], _) ->
 %% We only look at where the function is defined, we can't really get
 %% the actual line number where the call happened, unfortunately.
 format_subcalls(LN, [#call{mfa=MFA, source={Source, TargetLN}, incl=Incl,
-        wait_incl=Wait, wait_count=WaitCount, count=Count, calls=_Calls}|Tail], Opts) ->
+        wait_incl=Wait, wait_count_incl=WaitCount, count=Count, calls=_Calls}|Tail], Opts) ->
     RunningCosts = case Opts of
         #{running := true} ->
             [

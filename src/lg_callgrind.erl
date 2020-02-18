@@ -321,8 +321,7 @@ update_sub_calls(Callee=#call{mfa=MFA, incl=CallerIncl, count=CallerCount,
 
 handle_in(Pid, InTs, Proc0=#proc{stack=[Current0|Stack0], out=OutTs},
         State=#state{processes=Procs}) ->
-    #call{mfa=CurrentMFA,
-        wait=Wait, wait_incl=WaitIncl,
+    #call{wait=Wait, wait_incl=WaitIncl,
         wait_count=WaitCount, wait_count_incl=WaitCountIncl
     } = Current0,
     ThisWait = InTs - OutTs,

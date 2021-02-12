@@ -14,10 +14,6 @@
 
 -module(lg_flame).
 
--ifdef(OTP_RELEASE).
--compile({nowarn_deprecated_function, [{erlang, get_stacktrace, 0}]}).
--endif.
-
 -export([profile/2]).
 -export([profile_many/2]).
 
@@ -125,8 +121,8 @@ exp1_inner({trace_ts, Pid, call, MFA, BIN, TS},
            end,
     %% TODO: more state tracking here.
     S#state{pid=Pid, last_ts=TS, count=Count+1, acc=Acc2}
-  catch XX:YY ->
-            io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, XX, YY, erlang:get_stacktrace()]),
+  catch XX:YY:ZZ ->
+            io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, XX, YY, ZZ]),
             S
   end;
 exp1_inner({trace_ts, _Pid, return_to, MFA, TS}, #state{last_ts=LastTS, acc=Acc} = S) ->
@@ -146,8 +142,8 @@ exp1_inner({trace_ts, _Pid, return_to, MFA, TS}, #state{last_ts=LastTS, acc=Acc}
             {LastStack, LastTime + USec}|Tail],
 %    io:format(user, "return-to: ~p\n", [lists:sublist(Acc2, 4)]),
     S#state{last_ts=TS, acc=Acc2}
-  catch XX:YY ->
-            io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, XX, YY, erlang:get_stacktrace()]),
+  catch XX:YY:ZZ ->
+            io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, XX, YY, ZZ]),
             S
   end;
     
@@ -161,8 +157,8 @@ exp1_inner({trace_ts, _Pid, gc_start, _Info, TS}, #state{last_ts=LastTS, acc=Acc
             {LastStack, LastTime + USec}|Tail],
 %    io:format(user, "GC 1: ~p\n", [lists:sublist(Acc2, 4)]),
     S#state{last_ts=TS, acc=Acc2}
-  catch _XX:_YY ->
-            %% io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, _XX, _YY, erlang:get_stacktrace()]),
+  catch _XX:_YY:_ZZ ->
+            %% io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, _XX, _YY, _ZZ]),
             S
   end;
 exp1_inner({trace_ts, _Pid, gc_end, _Info, TS}, #state{last_ts=LastTS, acc=Acc} = S) ->
@@ -174,8 +170,8 @@ exp1_inner({trace_ts, _Pid, gc_end, _Info, TS}, #state{last_ts=LastTS, acc=Acc} 
     Acc2 = [{LastExecStack, 0}, {GCStack, GCTime + USec}|Tail],
 %    io:format(user, "GC 2: ~p\n", [lists:sublist(Acc2, 4)]),
     S#state{last_ts=TS, acc=Acc2}
-  catch _XX:_YY ->
-            %% io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, _XX, _YY, erlang:get_stacktrace()]),
+  catch _XX:_YY:_ZZ ->
+            %% io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, _XX, _YY, _ZZ]),
             S
   end;
 
@@ -191,8 +187,8 @@ exp1_inner({trace_ts, _Pid, out, MFA, TS}, #state{last_ts=LastTS, acc=Acc} = S) 
     Acc2 = [{NewStack, 0},
             {LastStack, LastTime + USec}|Tail],
     S#state{last_ts=TS, acc=Acc2}
-  catch XX:YY ->
-            io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, XX, YY, erlang:get_stacktrace()]),
+  catch XX:YY:ZZ ->
+            io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, XX, YY, ZZ]),
             S
   end;
 exp1_inner({trace_ts, _Pid, in, MFA, TS}, #state{last_ts=LastTS, acc=Acc} = S) ->
@@ -206,8 +202,8 @@ exp1_inner({trace_ts, _Pid, in, MFA, TS}, #state{last_ts=LastTS, acc=Acc} = S) -
     USec = TS - LastTS,
     Acc2 = [{[MFA_bin|LastExecStack], 0}, {SleepStack, SleepTime + USec}|Tail],
     S#state{last_ts=TS, acc=Acc2}
-  catch XX:YY ->
-            io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, XX, YY, erlang:get_stacktrace()]),
+  catch XX:YY:ZZ ->
+            io:format(user, "~p: ~p:~p @ ~p\n", [?LINE, XX, YY, ZZ]),
             S
   end;
 

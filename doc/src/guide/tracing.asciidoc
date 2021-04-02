@@ -132,7 +132,7 @@ input option `scope`:
 [source,erlang]
 ----
 1> lg:trace([{scope, [self()]}, io]).
-{call,<0.58.0>,1489494935163831,{io,cokolumns,0}}
+{call,<0.58.0>,1489494935163831,{io,columns,0}}
 {call,<0.58.0>,1489494935163841,{io,default_output,0}}
 {return_to,<0.58.0>,1489494935163844,{io,columns,0}}
 {call,<0.58.0>,1489494935163846,{io,columns,1}}

@@ -4,6 +4,7 @@ c_src/env.mk
 c_src/*.o
 deps/
 ebin/*.beam
+ebin/test
 logs/
 looking_glass.d
 priv/lg_tracer.so

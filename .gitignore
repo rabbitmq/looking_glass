@@ -8,3 +8,6 @@ logs/
 looking_glass.d
 priv/lg_tracer.so
 test/*.beam
+_build
+rebar3
+doc

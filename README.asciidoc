@@ -6,7 +6,7 @@ Looking Glass is a tracer and profiler for Erlang/OTP.
 
 Looking Glass is the next generation profiling tool. It
 is implemented as an `erl_tracer` NIF and thus requires
-Erlang/OTP 19.0 or above.
+Erlang/OTP 22.0 or above.
 
 Looking Glass aims to provide a very efficient tool
 usable both in development and production settings,

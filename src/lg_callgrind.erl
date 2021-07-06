@@ -388,9 +388,10 @@ write_mfas(Pid, MFAs, State) ->
     _ = [write_call(Pid, Call, State) || Call <- maps:values(MFAs)],
     ok.
 
-write_call(Pid, #call{mfa=MFA, source={Source, LN}, self=Self, wait=Wait,
+write_call(Pid, #call{mfa=MFA, source={Source, LN0}, self=Self, wait=Wait,
         wait_count=WaitCount, calls=Calls0},
         #state{output_device=OutDevice, opts=Opts}) ->
+    LN = line_number(LN0),
     Calls = maps:values(Calls0),
     Ob = case Opts of
         #{scope := per_process} ->
@@ -423,8 +424,10 @@ format_subcalls(_, [], _) ->
 %%
 %% We only look at where the function is defined, we can't really get
 %% the actual line number where the call happened, unfortunately.
-format_subcalls(LN, [#call{mfa=MFA, source={Source, TargetLN}, incl=Incl,
+format_subcalls(LN0, [#call{mfa=MFA, source={Source, TargetLN0}, incl=Incl,
         wait_incl=Wait, wait_count_incl=WaitCount, count=Count, calls=_Calls}|Tail], Opts) ->
+    LN = line_number(LN0),
+    TargetLN = line_number(TargetLN0),
     RunningCosts = case Opts of
         #{running := true} ->
             [
@@ -441,6 +444,10 @@ format_subcalls(LN, [#call{mfa=MFA, source={Source, TargetLN}, incl=Incl,
         "calls=", integer_to_list(Count), " ", integer_to_list(TargetLN), "\n",
         integer_to_list(LN), " ", integer_to_list(Incl), RunningCosts, "\n"
     ]|format_subcalls(LN, Tail, Opts)].
+
+%% Starting from OTP-24 we now have {Line, Column}.
+line_number({LN, _}) -> LN;
+line_number(LN) -> LN.
 
 convert_mfa(undefined) ->
     undefined;

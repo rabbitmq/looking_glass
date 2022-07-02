@@ -39,7 +39,7 @@ of the process where the event happened, a timestamp in
 microseconds and one or two extra elements providing
 extra context about the event.
 
-For example the following event is a function call occuring
+For example the following event is a function call occurring
 in the process `<0.64.0>` at timestamp `1488297891226328`
 to `supervisor:handle_info/2`.
 

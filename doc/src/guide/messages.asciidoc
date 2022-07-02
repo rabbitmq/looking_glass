@@ -154,7 +154,7 @@ the output entirely.
 Looking Glass can also be used to extract the sequence of messages
 exchanged between two or more processes. This is done using the
 `lg_messages_seqdiag` module, which works just like `lg_messages`
-ecept the functions take a second argument containing the list of
+except the functions take a second argument containing the list of
 pids you wish to investigate.
 
 To look at one file:

@@ -3,10 +3,10 @@ PROJECT_DESCRIPTION = New project
 PROJECT_VERSION = 0.1.0
 
 DEPS = lz4
-dep_lz4 = git https://github.com/rabbitmq/lz4-erlang master
+dep_lz4 = git https://github.com/rabbitmq/lz4-erlang.git main
 
 BUILD_DEPS = nif_helpers
-dep_nif_helpers = git https://github.com/ninenines/nif_helpers ead6adc15fca3c314351523080d2ccb1956d5956
+dep_nif_helpers = git https://github.com/ninenines/nif_helpers.git ead6adc15fca3c314351523080d2ccb1956d5956
 DEP_PLUGINS = nif_helpers
 
 LOCAL_DEPS = runtime_tools

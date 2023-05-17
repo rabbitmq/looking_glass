@@ -6,6 +6,7 @@ load(
 )
 load("@rules_erlang//:xref2.bzl", "xref")
 load("@rules_erlang//:dialyze.bzl", "dialyze", "plt")
+load("@rules_erlang//:eunit2.bzl", "eunit")
 load("@rules_erlang//:ct.bzl", "assert_suites2", "ct_suite")
 load(":util.bzl", "common_root_as_var")
 
@@ -21,6 +22,10 @@ EXTRA_APPS = [
 
 RUNTIME_DEPS = [
     "@lz4//:erlang_app",
+]
+
+TEST_ERLC_OPTS = DEFAULT_TEST_ERLC_OPTS + [
+    "+{parse_transform, eunit_autoexport}",
 ]
 
 common_root_as_var(
@@ -82,9 +87,7 @@ test_erlang_app(
     app_description = APP_DESCRIPTION,
     app_name = APP_NAME,
     app_version = APP_VERSION,
-    erlc_opts = DEFAULT_TEST_ERLC_OPTS + [
-        "+{parse_transform, eunit_autoexport}",
-    ],
+    erlc_opts = TEST_ERLC_OPTS,
     extra_apps = EXTRA_APPS,
     extra_priv = ["priv/lg_tracer.so"],
     runtime_deps = RUNTIME_DEPS,
@@ -105,6 +108,11 @@ plt(
 dialyze(
     size = "small",
     plt = ":deps_plt",
+)
+
+eunit(
+    name = "eunit",
+    target = ":test_erlang_app",
 )
 
 ct_suite(

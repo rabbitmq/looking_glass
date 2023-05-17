@@ -20,7 +20,7 @@ use_repo(
 
 bazel_dep(
     name = "rules_erlang",
-    version = "3.10.1",
+    version = "3.10.3",
 )
 
 erlang_config_extension = use_extension(

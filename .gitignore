@@ -9,3 +9,8 @@ logs/
 looking_glass.d
 priv/lg_tracer.so
 test/*.beam
+
+/user.bazelrc
+/bazel-*
+
+/.vscode/

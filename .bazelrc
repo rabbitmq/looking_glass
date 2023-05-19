@@ -42,6 +42,9 @@ build:rbe-24 --platforms=//platforms:erlang_linux_24_platform
 build:rbe-25 --config=rbe
 build:rbe-25 --platforms=//platforms:erlang_linux_25_platform
 
+build:rbe-26 --config=rbe
+build:rbe-26 --platforms=//platforms:erlang_linux_26_platform
+
 # Try importing a user specific .bazelrc
 # You can create your own by copying and editing the template-user.bazelrc template:
 # cp template-user.bazelrc user.bazelrc

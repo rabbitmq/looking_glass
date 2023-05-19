@@ -5,7 +5,7 @@ load(
     "test_erlang_app",
 )
 load("@rules_erlang//:xref2.bzl", "xref")
-load("@rules_erlang//:dialyze.bzl", "dialyze", "plt")
+load("@rules_erlang//:dialyze.bzl", "DEFAULT_PLT_APPS", "dialyze", "plt")
 load("@rules_erlang//:eunit2.bzl", "eunit")
 load("@rules_erlang//:ct.bzl", "assert_suites2", "ct_suite")
 load(":util.bzl", "common_root_as_var")
@@ -97,11 +97,7 @@ xref()
 
 plt(
     name = "deps_plt",
-    apps = [
-        "erts",
-        "kernel",
-        "stdlib",
-    ],
+    apps = DEFAULT_PLT_APPS,
     for_target = ":erlang_app",
 )
 

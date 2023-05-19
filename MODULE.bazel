@@ -64,12 +64,6 @@ use_repo(
 )
 
 bazel_dep(
-    name = "lz4",
-    version = "1.9.2.3",
-)
-
-git_override(
-    commit = "80cd51f2b98656805711aeab8ca3c47139fb8bd0",
-    module_name = "lz4",
-    remote = "https://github.com/rabbitmq/lz4-erlang.git",
+    name = "lz4-erlang",
+    version = "1.9.2.4",
 )

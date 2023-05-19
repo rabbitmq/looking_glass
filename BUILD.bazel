@@ -14,14 +14,14 @@ APP_NAME = "looking_glass"
 
 APP_DESCRIPTION = "New project"
 
-APP_VERSION = "0.1.0"
+APP_VERSION = module_version()
 
 EXTRA_APPS = [
     "runtime_tools",
 ]
 
 RUNTIME_DEPS = [
-    "@lz4//:erlang_app",
+    "@lz4-erlang//:erlang_app",
 ]
 
 TEST_ERLC_OPTS = DEFAULT_TEST_ERLC_OPTS + [

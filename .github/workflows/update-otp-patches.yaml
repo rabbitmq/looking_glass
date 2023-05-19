@@ -1,0 +1,28 @@
+name: Update OTP Patch Versions
+on:
+  schedule:
+  - cron: '0 3 * * *'
+  workflow_dispatch:
+jobs:
+  update-toolchains:
+    uses: ./.github/workflows/update-otp-patch-version.yaml
+    with:
+      target_name: ${{ matrix.name }}
+      erlang_version: ${{ matrix.erlang_version }}
+    secrets:
+      REPO_SCOPED_TOKEN: ${{ secrets.REPO_SCOPED_TOKEN }}
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        erlang_version:
+        - "24.3"
+        - "25.3"
+        - "26.0"
+        include:
+        - erlang_version: "24.3"
+          name: '24'
+        - erlang_version: "25.3"
+          name: '25'
+        - erlang_version: "26.0"
+          name: '26'

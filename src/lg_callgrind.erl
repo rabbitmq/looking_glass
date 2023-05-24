@@ -424,9 +424,8 @@ format_subcalls(_, [], _) ->
 %%
 %% We only look at where the function is defined, we can't really get
 %% the actual line number where the call happened, unfortunately.
-format_subcalls(LN0, [#call{mfa=MFA, source={Source, TargetLN0}, incl=Incl,
+format_subcalls(LN, [#call{mfa=MFA, source={Source, TargetLN0}, incl=Incl,
         wait_incl=Wait, wait_count_incl=WaitCount, count=Count, calls=_Calls}|Tail], Opts) ->
-    LN = line_number(LN0),
     TargetLN = line_number(TargetLN0),
     RunningCosts = case Opts of
         #{running := true} ->
@@ -446,6 +445,7 @@ format_subcalls(LN0, [#call{mfa=MFA, source={Source, TargetLN0}, incl=Incl,
     ]|format_subcalls(LN, Tail, Opts)].
 
 %% Starting from OTP-24 we now have {Line, Column}.
+-dialyzer({nowarn_function, line_number/1}).
 line_number({LN, _}) -> LN;
 line_number(LN) -> LN.
 

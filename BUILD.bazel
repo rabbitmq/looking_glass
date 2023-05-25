@@ -1,0 +1,121 @@
+load(
+    "@rules_erlang//:erlang_app.bzl",
+    "DEFAULT_TEST_ERLC_OPTS",
+    "erlang_app",
+    "test_erlang_app",
+)
+load("@rules_erlang//:xref2.bzl", "xref")
+load("@rules_erlang//:dialyze.bzl", "DEFAULT_PLT_APPS", "dialyze", "plt")
+load("@rules_erlang//:eunit2.bzl", "eunit")
+load("@rules_erlang//:ct.bzl", "assert_suites2", "ct_suite")
+load(":util.bzl", "common_root_as_var")
+
+APP_NAME = "looking_glass"
+
+APP_DESCRIPTION = "New project"
+
+APP_VERSION = module_version()
+
+EXTRA_APPS = [
+    "runtime_tools",
+]
+
+RUNTIME_DEPS = [
+    "@lz4-erlang//:erlang_app",
+]
+
+TEST_ERLC_OPTS = DEFAULT_TEST_ERLC_OPTS + [
+    "+{parse_transform, eunit_autoexport}",
+]
+
+common_root_as_var(
+    name = "erlang_headers_dir",
+    srcs = [
+        "@rules_erlang//tools:erlang_headers",
+    ],
+)
+
+common_root_as_var(
+    name = "nif_helpers_dir",
+    srcs = [
+        "@nif_helpers//:nif_helpers.h",
+    ],
+)
+
+cc_binary(
+    name = "lg_tracer",
+    srcs = glob([
+        "c_src/**/*.c",
+        "c_src/**/*.h",
+    ]) + [
+        "@rules_erlang//tools:erlang_headers",
+        "@nif_helpers//:nif_helpers.h",
+        "@nif_helpers//:nif_helpers.c",
+    ],
+    copts = [
+        "-I $(ERLANG_HEADERS_DIR)",
+        "-I $(NIF_HELPERS_DIR)",
+        "-fPIC",
+    ] + select({
+        "@platforms//os:macos": ["-Wno-implicit-function-declaration"],
+        "//conditions:default": [],
+    }),
+    linkshared = True,
+    toolchains = [
+        ":erlang_headers_dir",
+        ":nif_helpers_dir",
+    ],
+)
+
+genrule(
+    name = "lg_tracer_so",
+    srcs = [":lg_tracer"],
+    outs = ["priv/lg_tracer.so"],
+    cmd = "cp $< $@",
+)
+
+erlang_app(
+    app_description = APP_DESCRIPTION,
+    app_name = APP_NAME,
+    app_version = APP_VERSION,
+    extra_apps = EXTRA_APPS,
+    extra_priv = ["priv/lg_tracer.so"],
+    runtime_deps = RUNTIME_DEPS,
+)
+
+test_erlang_app(
+    app_description = APP_DESCRIPTION,
+    app_name = APP_NAME,
+    app_version = APP_VERSION,
+    erlc_opts = TEST_ERLC_OPTS,
+    extra_apps = EXTRA_APPS,
+    extra_priv = ["priv/lg_tracer.so"],
+    runtime_deps = RUNTIME_DEPS,
+)
+
+xref()
+
+plt(
+    name = "deps_plt",
+    apps = DEFAULT_PLT_APPS,
+    for_target = ":erlang_app",
+)
+
+dialyze(
+    size = "small",
+    plt = ":deps_plt",
+)
+
+eunit(
+    name = "eunit",
+    target = ":test_erlang_app",
+)
+
+ct_suite(
+    name = "lg_SUITE",
+    runtime_deps = [
+        "@ct_helper//:erlang_app",
+    ],
+)
+
+assert_suites2()

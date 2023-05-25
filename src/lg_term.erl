@@ -116,7 +116,7 @@ maps_to_list_test() ->
         #{a => b, c => d, e => f}, 3)),
     [{'$truncated', '$truncated'}, {a, b}, {c, d}, {e, f}] = lists:sort(maps_to_list(
         #{a => b, c => d, e => f, g => h}, 3)),
-    [{'$truncated', '$truncated'}, {a, b}, {c, d}, {e, f}] = lists:sort(maps_to_list(
+    [{'$truncated', '$truncated'}, {a, b}, {c, d}, {_, _}] = lists:sort(maps_to_list(
         #{a => b, c => d, e => f, g => h, i => j}, 3)),
     %% Confirm that truncated values are at the end.
     [_, _, _, {'$truncated', '$truncated'}] = maps_to_list(

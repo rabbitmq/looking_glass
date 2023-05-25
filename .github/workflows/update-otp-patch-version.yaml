@@ -1,0 +1,71 @@
+name: Update OTP Patch Version
+on:
+  workflow_call:
+    inputs:
+      target_name:
+        required: true
+        type: string
+      erlang_version:
+        required: true
+        type: string
+    secrets:
+      REPO_SCOPED_TOKEN:
+        required: true
+jobs:
+  update-toolchains:
+    name: Update OTP ${{ inputs.erlang_version }} Patch Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - name: CHECKOUT REPOSITORY
+      uses: actions/checkout@v3
+    - name: DETERMINE LATEST PATCH & SHA
+      id: fetch-version
+      run: |
+        TAG_NAME=$(curl -s GET https://api.github.com/repos/erlang/otp/tags?per_page=100 \
+          | jq -r 'map(select(.name | contains("OTP-${{ inputs.erlang_version }}"))) | first | .name')
+        VERSION=${TAG_NAME#OTP-}
+        if [[ -z "${VERSION}" ]]; then
+          echo "Failed to determine latest VERSION for OTP-${{ inputs.erlang_version }}"
+          exit 1
+        fi
+        ARCHIVE_RBE_URL="https://github.com/erlang/otp/releases/download/${TAG_NAME}/otp_src_${VERSION}.tar.gz"
+        wget --continue --quiet --output-document="/tmp/otp_src_${VERSION}.tar.gz" "${ARCHIVE_RBE_URL}"
+        SHA="$(shasum -a 256 "/tmp/otp_src_${VERSION}.tar.gz" | awk '{print $1}')"
+        if [[ -z "${SHA}" ]]; then
+          echo "Failed to determine SHA for ${TAG_NAME}"
+          exit 1
+        fi
+        echo "::set-output name=VERSION::${VERSION}"
+        echo "::set-output name=SHA::${SHA}"
+    - name: MODIFY VERSION FILE
+      run: |
+        sudo npm install --global --silent @bazel/buildozer
+        echo "$(cat MODULE.bazel | buildozer 'set sha256 "${{ steps.fetch-version.outputs.SHA }}"' -:${{ inputs.target_name }})" > MODULE.bazel
+        echo "$(cat MODULE.bazel | buildozer 'set version "${{ steps.fetch-version.outputs.VERSION }}"' -:${{ inputs.target_name }})" > MODULE.bazel
+        set -x
+        git diff
+    - name: CREATE PULL REQUEST
+      id: cpr
+      uses: peter-evans/create-pull-request@v5.0.1
+      with:
+        token: ${{ secrets.REPO_SCOPED_TOKEN }}
+        committer: GitHub <noreply@github.com>
+        author: GitHub <noreply@github.com>
+        title: Adopt otp ${{ steps.fetch-version.outputs.VERSION }}
+        body: >
+           Automated changes created by
+           ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+           using the [create-pull-request](https://github.com/peter-evans/create-pull-request)
+           GitHub action in the ${{ github.workflow }} workflow.
+        commit-message: |
+          Adopt otp ${{ steps.fetch-version.outputs.VERSION }}
+        branch: bump-otp-${{ inputs.erlang_version }}
+        delete-branch: true
+    - name: ENABLE PULL REQUEST AUTOMERGE
+      if: steps.cpr.outputs.pull-request-operation == 'created'
+      uses: peter-evans/enable-pull-request-automerge@v3
+      with:
+        token: ${{ secrets.REPO_SCOPED_TOKEN }}
+        pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
+        merge-method: squash

@@ -71,5 +71,5 @@ use_repo(
 
 bazel_dep(
     name = "lz4-erlang",
-    version = "1.9.2.4",
+    version = "1.9.2.5",
 )

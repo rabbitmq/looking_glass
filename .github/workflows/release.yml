@@ -1,0 +1,50 @@
+name: Release
+on:
+  push:
+    tags:
+    - 0.*
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - name: CHECKOUT
+      uses: actions/checkout@v3
+      with:
+        path: looking_glass
+    - name: ASSERT VERSIONS
+      id: versions
+      working-directory: looking_glass
+      run: |
+        sudo npm install --global --silent @bazel/buildozer
+
+        VERSION_ERLANG_MK="$(sed -ne 's/PROJECT_VERSION = \(.*\)/\1/p' Makefile)"
+
+        if [[ "${{ github.ref_name }}" != "v$VERSION_ERLANG_MK" ]]; then
+          echo "Version in Makefile ($VERSION_ERLANG_MK) does not match tag (${{ github.ref_name }})"
+          exit 1
+        fi
+
+        VERSION_BAZEL="$(cat MODULE.bazel | buildozer 'print version' -:%module)"
+
+        if [[ "${{ github.ref_name }}" != "v$VERSION_BAZEL" ]]; then
+          echo "Version in MODULE.bazel ($VERSION_BAZEL) does not match tag (${{ github.ref_name }})"
+          exit 1
+        fi
+
+        echo "version=$VERSION_BAZEL" | tee -a $GITHUB_OUTPUT
+    - name: FETCH THE SOURCE ARCHIVE
+      run: |
+        curl \
+          -L \
+          -o looking_glass-${{ steps.versions.outputs.version }}.tar.gz \
+          https://github.com/${{ github.repository }}/archive/${{ github.ref }}.tar.gz
+    - name: CREATE RELEASE
+      id: create-release
+      uses: ncipollo/release-action@v1.12.0
+      with:
+        allowUpdates: true
+        artifactErrorsFailBuild: true
+        updateOnlyUnreleased: true
+        generateReleaseNotes: true
+        artifacts: >-
+          looking_glass-${{ steps.versions.outputs.version }}.tar.gz

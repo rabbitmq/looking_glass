@@ -24,7 +24,6 @@ jobs:
         REPO_NAME: looking_glass
       run: |
         VERSION="${{ github.ref_name }}"
-        VERSION="${VERSION#v}"
         MAJOR="${VERSION:0:1}"
 
         echo "VERSION: ${VERSION}"

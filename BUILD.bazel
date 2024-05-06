@@ -60,6 +60,10 @@ cc_binary(
         "@platforms//os:macos": ["-Wno-implicit-function-declaration"],
         "//conditions:default": [],
     }),
+    linkopts = select({
+        "@platforms//os:macos": ["-Wl,-undefined,dynamic_lookup"],
+        "//conditions:default": [],
+    }),
     linkshared = True,
     toolchains = [
         ":erlang_headers_dir",

@@ -8,11 +8,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: CHECKOUT
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         path: looking_glass
     - name: CHECKOUT rabbitmq/bazel-central-registry@erlang-packages
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: rabbitmq/bazel-central-registry
         path: bazel-central-registry
@@ -54,12 +54,13 @@ jobs:
 
         jq '.' ${MODULE_NAME}.json
 
-        bazel run //tools:add_module -- \
+        pip install -r tools/requirements_lock.txt
+        python3 tools/add_module.py \
           --input=${MODULE_NAME}.json
 
         git diff
     - name: CREATE PULL REQUEST
-      uses: peter-evans/create-pull-request@v5.0.2
+      uses: peter-evans/create-pull-request@v6.0.3
       with:
         token: ${{ secrets.REPO_SCOPED_TOKEN }}
         path: bazel-central-registry

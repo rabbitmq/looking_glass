@@ -1,6 +1,6 @@
 PROJECT = looking_glass
 PROJECT_DESCRIPTION = New project
-PROJECT_VERSION = 0.2.1
+PROJECT_VERSION = 0.2.2
 
 DEPS = lz4
 dep_lz4 = git https://github.com/rabbitmq/lz4-erlang.git main

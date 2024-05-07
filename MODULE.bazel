@@ -1,6 +1,6 @@
 module(
     name = "com_github_rabbitmq_looking_glass",
-    version = "0.2.1",
+    version = "0.2.2",
 )
 
 bazel_dep(

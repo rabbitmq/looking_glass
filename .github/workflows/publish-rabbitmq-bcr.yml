@@ -47,7 +47,7 @@ jobs:
             "test_module_build_targets": [],
             "test_module_path": null,
             "test_module_test_targets": [],
-            "url": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${REPO_NAME}-${VERSION}.tar.gz",
+            "url": "https://github.com/${{ github.repository }}/releases/download/${VERSION}/${REPO_NAME}-${VERSION}.tar.gz",
             "version": "${VERSION}"
         }
         EOF
